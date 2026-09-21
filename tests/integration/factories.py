@@ -13,8 +13,14 @@ from datetime import datetime, time
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.award_cost_matrix import AwardCostMatrix
-from app.models.enums import RosterStatus
+from app.models.enums import (
+    ReoptimizationEventType,
+    ReoptimizationResolution,
+    ReoptimizationStatus,
+    RosterStatus,
+)
 from app.models.job import Job
+from app.models.reoptimization import ReoptimizationEvent
 from app.models.roster import Roster, RosterAssignment
 from app.models.shift import Shift
 from app.models.site import Site
@@ -162,3 +168,30 @@ async def make_roster_assignment(
     session.add(assignment)
     await session.flush()
     return assignment
+
+
+async def make_reoptimization_event(
+    session: AsyncSession,
+    *,
+    event_type: ReoptimizationEventType,
+    occurred_at: datetime,
+    shift_id: int | None = None,
+    worker_id: int | None = None,
+    route_id: int | None = None,
+    resolution: ReoptimizationResolution | None = None,
+    resolved_at: datetime | None = None,
+    status: ReoptimizationStatus = ReoptimizationStatus.OPEN,
+) -> ReoptimizationEvent:
+    event = ReoptimizationEvent(
+        event_type=event_type,
+        occurred_at=occurred_at,
+        shift_id=shift_id,
+        worker_id=worker_id,
+        route_id=route_id,
+        resolution=resolution,
+        resolved_at=resolved_at,
+        status=status,
+    )
+    session.add(event)
+    await session.flush()
+    return event

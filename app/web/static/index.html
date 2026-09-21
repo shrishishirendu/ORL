@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ORL Ops Dashboard</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="topbar">
+  <h1>ORL Ops Dashboard</h1>
+  <nav class="tabs" id="nav-tabs">
+    <button data-view="dashboard" class="active">Dashboard</button>
+    <button data-view="rosters">Rosters</button>
+    <button data-view="route">Route</button>
+    <button data-view="events">Events</button>
+  </nav>
+</header>
+
+<main>
+  <div id="global-error" class="error-banner hidden"></div>
+
+  <!-- ============================ Dashboard ============================ -->
+  <section class="view active" id="view-dashboard">
+    <div class="cards" id="dashboard-cards">
+      <div class="card"><div class="value" id="card-workers">–</div><div class="label">Workers</div></div>
+      <div class="card"><div class="value" id="card-shifts">–</div><div class="label">Shifts</div></div>
+      <div class="card"><div class="value" id="card-rosters">–</div><div class="label">Rosters</div></div>
+      <div class="card"><div class="value" id="card-latest-roster">–</div><div class="label">Latest roster status</div></div>
+    </div>
+
+    <div class="panel">
+      <h2>Solve roster (Tier 1)</h2>
+      <form class="inline-form" id="solve-roster-form">
+        <div class="field">
+          <label for="solve-period-start">Period start</label>
+          <input type="date" id="solve-period-start" required />
+        </div>
+        <div class="field">
+          <label for="solve-period-end">Period end</label>
+          <input type="date" id="solve-period-end" required />
+        </div>
+        <button type="submit" class="primary" id="solve-roster-btn">Solve Roster</button>
+      </form>
+      <div class="muted" id="solve-roster-status"></div>
+      <div class="result-box hidden" id="solve-roster-result"></div>
+    </div>
+  </section>
+
+  <!-- ============================= Rosters ============================= -->
+  <section class="view" id="view-rosters">
+    <div class="panel">
+      <h2>Roster</h2>
+      <form class="inline-form" id="roster-picker-form">
+        <div class="field">
+          <label for="roster-select">Roster</label>
+          <select id="roster-select"></select>
+        </div>
+        <button type="button" class="primary" id="roster-refresh-btn">Refresh</button>
+      </form>
+      <div class="muted" id="roster-summary"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Assignments</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Worker</th>
+              <th>Day</th>
+              <th>Shift</th>
+              <th>Required skill</th>
+              <th>Site / Region</th>
+              <th>Mode</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="roster-assignments-body">
+            <tr><td colspan="7" class="muted">No roster selected.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== Route =============================== -->
+  <section class="view" id="view-route">
+    <div class="panel">
+      <h2>Route / site assignment</h2>
+      <form class="inline-form" id="route-picker-form">
+        <div class="field">
+          <label for="route-assignment-id">Roster assignment ID</label>
+          <input type="number" id="route-assignment-id" min="1" />
+        </div>
+        <button type="submit" class="primary">Load</button>
+      </form>
+      <div id="route-content"><p class="muted">Pick a roster assignment (from the Rosters tab, or by ID) to see its route.</p></div>
+    </div>
+  </section>
+
+  <!-- ============================== Events =============================== -->
+  <section class="view" id="view-events">
+    <div class="panel">
+      <h2>Re-optimization events</h2>
+      <form class="inline-form" id="events-filter-form">
+        <div class="field">
+          <label for="events-filter-shift">Shift ID</label>
+          <input type="number" id="events-filter-shift" min="1" placeholder="any" />
+        </div>
+        <div class="field">
+          <label for="events-filter-resolved">Resolved</label>
+          <select id="events-filter-resolved">
+            <option value="">any</option>
+            <option value="true">resolved</option>
+            <option value="false">unresolved</option>
+          </select>
+        </div>
+        <button type="submit" class="primary">Filter</button>
+      </form>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Type</th>
+              <th>Occurred at</th>
+              <th>Shift</th>
+              <th>Worker</th>
+              <th>Route</th>
+              <th>Status</th>
+              <th>Resolution</th>
+            </tr>
+          </thead>
+          <tbody id="events-body">
+            <tr><td colspan="8" class="muted">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Send a test event</h2>
+      <form id="event-form">
+        <div class="inline-form">
+          <div class="field">
+            <label for="event-type">Event type</label>
+            <select id="event-type">
+              <option value="job_cancelled">job_cancelled</option>
+              <option value="worker_sick">worker_sick</option>
+              <option value="visit_overran">visit_overran</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="event-shift-id">Shift ID</label>
+            <input type="number" id="event-shift-id" min="1" required />
+          </div>
+          <div class="field">
+            <label for="event-worker-id">Worker ID</label>
+            <input type="number" id="event-worker-id" min="1" required />
+          </div>
+        </div>
+        <div class="inline-form">
+          <div class="field" id="event-field-cancelled-job">
+            <label for="event-cancelled-job-id">Cancelled job ID</label>
+            <input type="number" id="event-cancelled-job-id" min="1" />
+          </div>
+          <div class="field" id="event-field-current-site">
+            <label for="event-current-site-id">Current site ID</label>
+            <input type="number" id="event-current-site-id" min="1" />
+          </div>
+          <div class="field" id="event-field-current-time">
+            <label for="event-current-time">Current time</label>
+            <input type="datetime-local" id="event-current-time" />
+          </div>
+          <div class="field hidden" id="event-field-planned-time">
+            <label for="event-planned-time">Planned time (optional)</label>
+            <input type="datetime-local" id="event-planned-time" />
+          </div>
+        </div>
+        <div class="inline-form">
+          <div class="field">
+            <label for="event-completed-jobs">Completed job IDs (comma-separated, optional)</label>
+            <input type="text" id="event-completed-jobs" placeholder="e.g. 3,4" />
+          </div>
+          <button type="submit" class="primary" id="event-submit-btn">Send event</button>
+        </div>
+      </form>
+      <div class="muted" id="event-submit-status"></div>
+      <div class="result-box hidden" id="event-submit-result"></div>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

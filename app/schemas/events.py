@@ -18,7 +18,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class JobCancelledEvent(BaseModel):
@@ -69,3 +69,33 @@ EventRequest = Annotated[
     JobCancelledEvent | WorkerSickEvent | VisitOverranEvent,
     Field(discriminator="event_type"),
 ]
+
+
+class EventRead(BaseModel):
+    """One `ReoptimizationEvent` row for `GET /events`.
+
+    ``resolution``/``status`` are read out as plain strings (not the enum
+    class itself) -- see ``app/models/enums.py``'s ``ReoptimizationResolution``/
+    ``ReoptimizationStatus`` for the vocabularies.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    event_type: str
+    occurred_at: datetime
+    shift_id: int | None = None
+    worker_id: int | None = None
+    route_id: int | None = None
+    resolution: str | None = None
+    resolved_at: datetime | None = None
+    status: str
+
+
+class EventListResponse(BaseModel):
+    """`GET /events` response: a page of events plus paging metadata."""
+
+    items: list[EventRead]
+    total: int
+    limit: int
+    offset: int
