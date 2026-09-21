@@ -32,6 +32,7 @@ from app.models import (
     Shift,
     Site,
     SiteAssignment,
+    TravelMatrixEntry,
     Worker,
 )
 from app.models.base import Base
@@ -57,7 +58,15 @@ EXPECTED_TABLES: dict[str, set[str]] = {
         "min_hours",
         "max_hours",
     },
-    "roster": {"id", "period_start", "period_end", "generated_at", "status", "total_cost"},
+    "roster": {
+        "id",
+        "period_start",
+        "period_end",
+        "generated_at",
+        "status",
+        "total_cost",
+        "failure_reason",
+    },
     "roster_assignment": {"id", "roster_id", "worker_id", "day", "shift_id"},
     "job": {
         "id",
@@ -90,6 +99,7 @@ EXPECTED_TABLES: dict[str, set[str]] = {
         "status",
     },
     "site": {"id", "code", "name", "region", "latitude", "longitude"},
+    "travel_matrix_entry": {"id", "from_site_id", "to_site_id", "travel_minutes"},
 }
 
 
@@ -124,6 +134,7 @@ def test_foreign_keys_point_at_expected_tables() -> None:
     assert fk_targets("route_stop") == {"route", "job"}
     assert fk_targets("site_assignment") == {"roster_assignment", "site"}
     assert fk_targets("reoptimization_event") == {"route", "shift", "worker"}
+    assert fk_targets("travel_matrix_entry") == {"site"}
 
 
 def test_expected_unique_constraints_present() -> None:
@@ -143,6 +154,9 @@ def test_expected_unique_constraints_present() -> None:
     ) in unique_constraint_columns("roster_assignment")
     assert frozenset({"route_id", "sequence_no"}) in unique_constraint_columns("route_stop")
     assert frozenset({"route_id", "job_id"}) in unique_constraint_columns("route_stop")
+    assert frozenset({"from_site_id", "to_site_id"}) in unique_constraint_columns(
+        "travel_matrix_entry"
+    )
 
     # Route/SiteAssignment are one-to-one with RosterAssignment: enforced via
     # a unique index on the FK column rather than a UniqueConstraint object.
@@ -179,6 +193,7 @@ def test_models_repr_do_not_raise() -> None:
         Job(id=1, shift_id=1, site_id=1, duration_minutes=30),
         Shift(id=1, required_skill="first_aid", site_id=1),
         AwardCostMatrix(id=1, worker_id=1, shift_id=1, pay_cost=100, eligible=True),
+        TravelMatrixEntry(id=1, from_site_id=1, to_site_id=2, travel_minutes=15),
     ]
     for instance in models_and_instances:
         text = repr(instance)

@@ -26,6 +26,7 @@ from app.models.route import Route, RouteStop
 from app.models.shift import Shift
 from app.models.site import Site
 from app.models.site_assignment import SiteAssignment
+from app.models.travel_matrix import TravelMatrixEntry
 from app.models.worker import Worker
 
 __all__ = [
@@ -45,5 +46,6 @@ __all__ = [
     "Shift",
     "Site",
     "SiteAssignment",
+    "TravelMatrixEntry",
     "Worker",
 ]

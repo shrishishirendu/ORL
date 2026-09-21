@@ -1,61 +1,197 @@
-"""DB-facing boundary for Tier 1 rostering -- NOT WIRED UP YET.
+"""DB-facing boundary for Tier 1 rostering.
 
-This module documents, but does not implement, the function that will sit
-between ``app.core.db`` and the pure solver in ``solver.py``. Wiring it up
-for real is API-routing/task-queue work (dispatching a batch solve onto the
-async task queue per ARCHITECTURE.md's "Supporting components" section),
-which is out of scope for the Tier 1 solver task this module was added
-under -- deferring it rather than guessing at how the API layer will want to
-call this.
+Per ``ARCHITECTURE.md``'s Tier 1 section, this module loads the batch
+solve's inputs -- active ``Worker`` rows, the period's ``Shift`` rows, and
+the ``AwardCostMatrix`` rows covering them -- maps each to the pure
+``app.services.rostering.solver`` dataclasses, calls ``solve_roster``, and
+persists the result:
 
-Intended shape, once implemented:
+- feasible: a ``Roster`` row (``status = SOLVED``, ``total_cost`` set) plus
+  one ``RosterAssignment`` row per ``solver.Assignment``.
+- infeasible: a ``Roster`` row alone (``status = FAILED``,
+  ``failure_reason`` populated from ``RosterSolution.unfilled_shifts`` /
+  ``diagnostics`` -- see ``app/models/roster.py``'s ``failure_reason``
+  docstring), with no assignment rows.
 
-    async def solve_and_persist_roster(
-        session: AsyncSession,
-        period_start: date,
-        period_end: date,
-    ) -> Roster:
-        '''Load inputs, solve, persist the result, return the Roster row.
-
-        Steps:
-        1. Query ``Worker`` (``active == True``) and map each row to a
-           ``solver.WorkerInput(id=worker.id, skills=frozenset(worker.skills),
-           region=worker.region)``.
-        2. Query ``Shift`` rows with ``date`` between ``period_start`` and
-           ``period_end`` (inclusive), joined to ``Site`` for
-           ``site_region``, and map each to a ``solver.ShiftInput``.
-        3. Query ``AwardCostMatrix`` rows with ``day`` in the same period,
-           restricted to the workers/shifts loaded above, and map each to a
-           ``solver.AwardCostMatrixEntry``.
-        4. Call ``solver.solve_roster(workers, shifts, matrix)``.
-        5. Create a ``Roster`` row for the period:
-           - ``status = RosterStatus.SOLVED`` if
-             ``result.is_feasible``, else ``RosterStatus.FAILED``.
-           - ``total_cost = result.total_cost`` (``None`` when infeasible).
-           - ``generated_at = datetime.now(UTC)``.
-           When infeasible, ``result.unfilled_shifts`` /
-           ``result.diagnostics`` need a home -- there is no column on
-           ``Roster`` for them yet (see app/models/roster.py). This needs a
-           schema decision (a new nullable ``failure_reason``/``JSONB``
-           column, or a separate table) before this function can actually
-           record *why* a solve failed, not just that it did. Flagging this
-           rather than bolting an underspecified column on silently.
-        6. For each ``solver.Assignment``, create a ``RosterAssignment`` row
-           (``roster_id``, ``worker_id``, ``day``, ``shift_id``) -- only when
-           feasible; an infeasible result persists the ``Roster`` row alone,
-           with no assignments.
-        7. ``session.add`` everything, ``await session.commit()``, return the
-           ``Roster``.
-
-    This should be dispatched from the async task queue (``arq``), not run
-    inline on an API request, per ARCHITECTURE.md's note that "Batch Tier 1
-    solves ... are dispatched onto the async task queue rather than run
-    inline on the request."
-
-Not implemented here: no import of ``app.core.db``/``app.models`` is added
-by this module, so it carries no risk of accidentally being half-wired
-against a schema shape (in particular the missing failure-reason column
-above) this task wasn't scoped to decide.
+This should be dispatched from the async task queue (``arq``), not run
+inline on an API request -- see ``app/workers/tasks.py``'s
+``solve_roster_task``, which is the only caller of
+``solve_and_persist_roster`` in this codebase.
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.models.award_cost_matrix import AwardCostMatrix
+from app.models.enums import RosterStatus
+from app.models.roster import Roster, RosterAssignment
+from app.models.shift import Shift
+from app.models.worker import Worker
+from app.services.rostering.solver import (
+    AwardCostMatrixEntry,
+    RosterSolution,
+    ShiftInput,
+    WorkerInput,
+    solve_roster,
+)
+
+
+@dataclass
+class RosterSolveOutcome:
+    """What the API/task layer needs to report back after a Tier 1 solve."""
+
+    roster_id: int
+    status: RosterStatus
+    total_cost: float | None = None
+    failure_reason: str | None = None
+    unfilled_shift_ids: list[int] = field(default_factory=list)
+
+
+def _effective_region(worker: Worker) -> str | None:
+    """Resolve the region ``WorkerInput.region`` should carry for this worker.
+
+    Per ARCHITECTURE.md's "Home location as depot" section and the
+    rostering solver's own module docstring (point 5), a worker's home
+    region for Tier 1's eligibility filter is "normally resolved from
+    ``home_site_id``'s ``Site.region``" -- so this prefers
+    ``worker.home_site.region``, falling back to the coarser, optional
+    ``Worker.region`` column (per ``Worker``'s own docstring, a "cheap/
+    free-text fallback/override ... when a caller doesn't want to resolve
+    it via the FK join") only when the home site itself has no region set.
+
+    FLAG FOR REVIEW: neither ARCHITECTURE.md nor the models pin down which
+    of the two wins when both are set and disagree; this module always
+    prefers the FK-resolved region as the canonical geographic source. The
+    opposite precedence (``Worker.region`` always wins when set) is equally
+    defensible from the docstrings alone.
+    """
+    if worker.home_site is not None and worker.home_site.region is not None:
+        return worker.home_site.region
+    return worker.region
+
+
+def _format_failure_reason(result: RosterSolution) -> str:
+    lines = [f"unfilled_shifts={result.unfilled_shifts}", *result.diagnostics]
+    return "\n".join(lines)
+
+
+async def solve_and_persist_roster(
+    session: AsyncSession, period_start: date, period_end: date
+) -> RosterSolveOutcome:
+    """Load Tier 1 inputs for ``period_start..period_end``, solve, persist.
+
+    Steps (see module docstring): load active workers, the period's shifts
+    (joined to ``Site`` for region), the matching ``AwardCostMatrix`` rows,
+    call ``solve_roster``, then persist a ``Roster`` (+ ``RosterAssignment``
+    rows on success) reflecting the outcome.
+    """
+    worker_rows = (
+        (
+            await session.execute(
+                select(Worker)
+                .options(selectinload(Worker.home_site))
+                .where(Worker.active.is_(True))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    workers = [
+        WorkerInput(id=w.id, skills=frozenset(w.skills), region=_effective_region(w))
+        for w in worker_rows
+    ]
+
+    shift_rows = (
+        (
+            await session.execute(
+                select(Shift)
+                .options(selectinload(Shift.site))
+                .where(Shift.date >= period_start, Shift.date <= period_end)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    shifts = [
+        ShiftInput(
+            id=s.id,
+            date=s.date,
+            start_time=s.start_time,
+            end_time=s.end_time,
+            required_skill=s.required_skill,
+            site_id=s.site_id,
+            site_region=s.site.region if s.site is not None else None,
+        )
+        for s in shift_rows
+    ]
+
+    matrix: list[AwardCostMatrixEntry] = []
+    worker_ids = {w.id for w in workers}
+    shift_ids = {s.id for s in shifts}
+    if worker_ids and shift_ids:
+        matrix_rows = (
+            (
+                await session.execute(
+                    select(AwardCostMatrix).where(
+                        AwardCostMatrix.day >= period_start,
+                        AwardCostMatrix.day <= period_end,
+                        AwardCostMatrix.worker_id.in_(worker_ids),
+                        AwardCostMatrix.shift_id.in_(shift_ids),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        matrix = [
+            AwardCostMatrixEntry(
+                worker_id=m.worker_id,
+                day=m.day,
+                shift_id=m.shift_id,
+                pay_cost=float(m.pay_cost),
+                eligible=m.eligible,
+                min_hours=float(m.min_hours) if m.min_hours is not None else None,
+                max_hours=float(m.max_hours) if m.max_hours is not None else None,
+            )
+            for m in matrix_rows
+        ]
+
+    result: RosterSolution = solve_roster(workers, shifts, matrix)
+
+    roster = Roster(
+        period_start=period_start,
+        period_end=period_end,
+        generated_at=datetime.now(UTC),
+        status=RosterStatus.SOLVED if result.is_feasible else RosterStatus.FAILED,
+        total_cost=result.total_cost if result.is_feasible else None,
+        failure_reason=None if result.is_feasible else _format_failure_reason(result),
+    )
+    session.add(roster)
+    await session.flush()  # assign roster.id before creating child rows
+
+    if result.is_feasible:
+        for assignment in result.assignments:
+            session.add(
+                RosterAssignment(
+                    roster_id=roster.id,
+                    worker_id=assignment.worker_id,
+                    day=assignment.day,
+                    shift_id=assignment.shift_id,
+                )
+            )
+
+    await session.commit()
+
+    return RosterSolveOutcome(
+        roster_id=roster.id,
+        status=roster.status,
+        total_cost=roster.total_cost,
+        failure_reason=roster.failure_reason,
+        unfilled_shift_ids=list(result.unfilled_shifts),
+    )

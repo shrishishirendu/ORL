@@ -1,7 +1,8 @@
 """Tier 1 — batch rostering (OR-Tools CP-SAT). Consumes AwardCostMatrix; never computes pay.
 
-``solver`` is the pure CP-SAT solver (no DB access). ``service`` documents
-the not-yet-wired DB-facing boundary that will call it -- see its docstring.
+``solver`` is the pure CP-SAT solver (no DB access). ``service`` is the
+DB-facing boundary that loads inputs, calls it, and persists the result --
+see its docstring.
 """
 
 from app.services.rostering.solver import (

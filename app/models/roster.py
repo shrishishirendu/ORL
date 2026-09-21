@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date as date_
 from datetime import datetime
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, Index, Numeric, UniqueConstraint
+from sqlalchemy import Date, DateTime, Enum, ForeignKey, Index, Numeric, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -19,7 +19,19 @@ from app.models.enums import RosterStatus
 
 
 class Roster(Base):
-    """One Tier 1 batch run covering a period (e.g. one week/fortnight)."""
+    """One Tier 1 batch run covering a period (e.g. one week/fortnight).
+
+    ``failure_reason`` is populated only when ``status`` is
+    ``RosterStatus.FAILED``: a human-readable rendering of the infeasible
+    ``RosterSolution.unfilled_shifts``/``diagnostics`` (see
+    ``app/services/rostering/solver.py``), so a failed batch solve leaves a
+    record of *why* it couldn't cover every shift rather than silently
+    dropping that diagnostic information (this column was added specifically
+    to close that gap -- see ``app/services/rostering/service.py``, which
+    populates it). Free text rather than a structured/JSONB column since
+    ``RosterSolution.diagnostics`` is already a list of human-readable
+    strings with no further structure to preserve.
+    """
 
     __tablename__ = "roster"
     __table_args__ = (
@@ -36,6 +48,7 @@ class Roster(Base):
         index=True,
     )
     total_cost: Mapped[float | None] = mapped_column(Numeric(12, 2), default=None)
+    failure_reason: Mapped[str | None] = mapped_column(Text, default=None)
 
     assignments: Mapped[list[RosterAssignment]] = relationship(
         back_populates="roster", cascade="all, delete-orphan"

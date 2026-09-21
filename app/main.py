@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health
+from app.api import dispatch, events, health, rostering
 
 app = FastAPI(title="ORL", description="Operational Resource Logistics")
 
@@ -18,3 +18,6 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(rostering.router)
+app.include_router(dispatch.router)
+app.include_router(events.router)
