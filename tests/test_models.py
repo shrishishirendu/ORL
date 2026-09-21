@@ -37,7 +37,7 @@ from app.models import (
 from app.models.base import Base
 
 EXPECTED_TABLES: dict[str, set[str]] = {
-    "worker": {"id", "name", "skills", "region", "active"},
+    "worker": {"id", "name", "skills", "region", "home_site_id", "active"},
     "shift": {
         "id",
         "date",
@@ -116,6 +116,7 @@ def test_foreign_keys_point_at_expected_tables() -> None:
         return {fk.column.table.name for fk in table.foreign_keys}
 
     assert fk_targets("shift") == {"site"}
+    assert fk_targets("worker") == {"site"}
     assert fk_targets("award_cost_matrix") == {"worker", "shift"}
     assert fk_targets("roster_assignment") == {"roster", "worker", "shift"}
     assert fk_targets("job") == {"shift", "site"}
@@ -160,7 +161,14 @@ def test_expected_unique_constraints_present() -> None:
 def test_models_repr_do_not_raise() -> None:
     """__repr__ should be safe to call on a transient (unflushed) instance."""
     models_and_instances = [
-        Worker(id=1, name="Jane Doe", skills=["first_aid"], region="North", active=True),
+        Worker(
+            id=1,
+            name="Jane Doe",
+            skills=["first_aid"],
+            region="North",
+            home_site_id=1,
+            active=True,
+        ),
         Site(id=1, code="SITE-1", name="Head Office"),
         Roster(id=1, status="pending"),
         RosterAssignment(id=1, roster_id=1, worker_id=1, shift_id=1),

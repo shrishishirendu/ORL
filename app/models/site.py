@@ -37,6 +37,9 @@ class Site(Base):
     site_assignments: Mapped[list[SiteAssignment]] = relationship(  # noqa: F821
         back_populates="site"
     )
+    workers_home_here: Mapped[list[Worker]] = relationship(  # noqa: F821
+        back_populates="home_site"
+    )
 
     def __repr__(self) -> str:
         return f"Site(id={self.id!r}, code={self.code!r}, name={self.name!r})"

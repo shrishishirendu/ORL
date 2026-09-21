@@ -249,6 +249,93 @@ def test_infeasible_when_overlap_and_hours_conflict_with_no_zero_candidate_shift
     assert len(result.diagnostics) == 1
 
 
+def test_region_mismatch_excludes_an_otherwise_ideal_worker() -> None:
+    """W1 is skilled, eligible, and by far the cheapest candidate for the
+    shift -- but W1's home region ("South") doesn't match the shift's site
+    region ("North"). Per the architectural correction (home location is a
+    hard Tier 1 eligibility filter, not a cost term), W1 must be excluded
+    from consideration entirely, leaving W2 (region-compatible, more
+    expensive) as the only real candidate. If region weren't enforced, the
+    optimal/only assignment would be W1 at cost 5; this test's whole point
+    is confirming W1 does NOT get picked despite being strictly cheaper.
+    """
+    w1 = WorkerInput(id=1, skills=frozenset({"care"}), region="South")
+    w2 = WorkerInput(id=2, skills=frozenset({"care"}), region="North")
+    shift = ShiftInput(
+        id=700,
+        date=DAY,
+        start_time=time(8, 0),
+        end_time=time(12, 0),
+        required_skill="care",
+        site_region="North",
+    )
+    matrix = [
+        AwardCostMatrixEntry(worker_id=1, day=DAY, shift_id=700, pay_cost=5, eligible=True),
+        AwardCostMatrixEntry(worker_id=2, day=DAY, shift_id=700, pay_cost=50, eligible=True),
+    ]
+
+    result = solve_roster([w1, w2], [shift], matrix)
+
+    assert result.status is SolveStatus.OPTIMAL
+    assert result.total_cost == 50.0
+    assignments = {(a.worker_id, a.shift_id) for a in result.assignments}
+    assert assignments == {(2, 700)}
+
+
+def test_region_mismatch_on_every_candidate_is_reported_infeasible() -> None:
+    """Both workers are skilled and eligible, but neither's home region
+    matches the shift's site region -- the shift has zero real candidates
+    once region is enforced, and the solver must report this cleanly (same
+    shape as a skill/eligibility gap), not silently ignore region.
+    """
+    w1 = WorkerInput(id=1, skills=frozenset({"care"}), region="South")
+    w2 = WorkerInput(id=2, skills=frozenset({"care"}), region="East")
+    shift = ShiftInput(
+        id=701,
+        date=DAY,
+        start_time=time(8, 0),
+        end_time=time(12, 0),
+        required_skill="care",
+        site_region="North",
+    )
+    matrix = [
+        AwardCostMatrixEntry(worker_id=1, day=DAY, shift_id=701, pay_cost=10, eligible=True),
+        AwardCostMatrixEntry(worker_id=2, day=DAY, shift_id=701, pay_cost=10, eligible=True),
+    ]
+
+    result = solve_roster([w1, w2], [shift], matrix)
+
+    assert result.status is SolveStatus.INFEASIBLE
+    assert result.unfilled_shifts == [701]
+
+
+def test_missing_region_data_on_either_side_does_not_constrain() -> None:
+    """A worker/shift with no region data at all (``None``) is not excluded
+    on region grounds -- this preserves the pre-existing region-agnostic
+    behaviour for callers that haven't populated region data (see the
+    solver's module docstring point 5 for why ``None`` means "unknown", not
+    "guaranteed mismatch").
+    """
+    w1 = WorkerInput(id=1, skills=frozenset({"care"}), region=None)
+    shift_known = ShiftInput(
+        id=702,
+        date=DAY,
+        start_time=time(8, 0),
+        end_time=time(12, 0),
+        required_skill="care",
+        site_region="North",
+    )
+
+    matrix = [
+        AwardCostMatrixEntry(worker_id=1, day=DAY, shift_id=702, pay_cost=10, eligible=True),
+    ]
+
+    result = solve_roster([w1], [shift_known], matrix)
+
+    assert result.status is SolveStatus.OPTIMAL
+    assert {(a.worker_id, a.shift_id) for a in result.assignments} == {(1, 702)}
+
+
 def test_empty_shift_list_is_trivially_optimal() -> None:
     result = solve_roster([], [], [])
     assert result.status is SolveStatus.OPTIMAL

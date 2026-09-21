@@ -7,6 +7,16 @@ matrix between sites, it produces an ordered stop sequence with planned
 arrival/departure times, or a clean, fast "infeasible" signal naming the
 job(s) that cannot be fit.
 
+**Closed round trip (home as depot).** Per the product owner's architectural
+correction (see ARCHITECTURE.md's "Home location as depot" section), the
+route is a **closed round trip**: the worker's ``home_site_id`` is both the
+route's start depot (a real, charged travel leg from home to the first job)
+and its end depot (a real, charged travel leg from the last job back home) --
+not the previous "open route" design, which charged nothing for the
+notional "return" to the depot. ``home_site_id`` is therefore a **required**
+parameter, not the old optional ``start_site_id`` (which defaulted to zero
+travel and had no return leg at all).
+
 This is deliberately a **single-vehicle** VRPTW, not a general multi-vehicle
 VRP: ARCHITECTURE.md is explicit that "Tier 2 takes the Roster as fixed
 input: it does not reassign which worker is on shift, only how a multi-stop
@@ -27,13 +37,33 @@ this module had to decide on:
   ``MissingTravelTimeError`` rather than silently defaulting to 0 --
   defaulting would let a route sequence past an actually-uncached site pair
   and quietly produce a wrong/optimistic schedule.
-- **Worker start location**: neither ``Worker`` nor ``RosterAssignment`` has
-  a "home site" column, so there is nothing in the schema to anchor where
-  the worker is *before* their first stop. ``start_site_id`` is therefore an
-  optional caller-supplied parameter (the natural candidate is the shift's
-  own ``Shift.site_id``, if that is meant to represent a depot/home site for
-  multi-stop shifts) -- when omitted, the solver assumes zero travel time to
-  the first stop (the worker is already wherever the route needs to begin).
+- **Worker start/end location**: ``Worker.home_site_id`` (see
+  ``app/models/worker.py``) now gives the schema an anchor for where the
+  worker is before their first stop *and* where they must end up after
+  their last one. ``home_site_id`` is a required parameter here -- the
+  caller resolves it from ``Worker.home_site_id`` -- used as node 0 of the
+  VRPTW model for both the route's start and its end (the return leg).
+- **Representing the return-to-home leg**: ``RouteSolveResult`` gains a
+  ``return_to_home_arrival: datetime | None`` field rather than a synthetic
+  extra ``RouteStopPlan`` with no ``job_id``. A ``RouteStop`` DB row always
+  represents a real ``Job`` (``RouteStop.job_id`` is ``NOT NULL`` per
+  ``app/models/route.py``), so modeling the return leg as a job-less "stop"
+  would either force a nullable FK there or a fake job row -- a dedicated,
+  clearly-named field is the more honest fit for "the route ends at this
+  time" without touching the ``RouteStop`` schema. It is populated whenever
+  the route (or the still-valid partial route reported alongside detected
+  infeasible jobs -- see below) has at least one stop; a 0-job route never
+  leaves home, so it stays ``None`` rather than reporting a same-as-start
+  "arrival".
+- **No hard window on the return leg**: only each *job's* time window is a
+  hard constraint (as before). Nothing in ARCHITECTURE.md or the schema
+  gives this module a shift-end time to enforce the worker must be home by
+  -- ``solve_shift_route`` has no ``shift_end``/``shift.end_time`` parameter
+  at all -- so ``return_to_home_arrival`` is reported for visibility
+  (queryable by a caller/API that does have a shift end time to compare
+  against) but never makes an otherwise-feasible route infeasible. Adding a
+  hard end-of-shift deadline here would need that parameter threaded in
+  from a caller; flagged rather than invented.
 - **Shift start anchor**: solving needs a zero point for the time axis.
   ``shift_start`` is optional; if omitted, the earliest job's
   ``window_start`` across the job list is used as time zero, but that will
@@ -177,23 +207,31 @@ class RouteSolveResult:
     infer) whenever ``feasible`` is False, so Tier 3's "escalate if
     infeasible" behaviour has a fast, clear signal to check without having
     to re-derive it.
+
+    ``return_to_home_arrival`` is the planned arrival time of the closed
+    round trip's final leg -- last stop (or straight from home, if no stop
+    could be planned) back to ``home_site_id``. It is ``None`` only when no
+    travel happened at all (the 0-job case). See the module docstring's
+    flag on why this is a dedicated field rather than a synthetic
+    ``RouteStopPlan``, and on why it is never itself a feasibility gate.
     """
 
     feasible: bool
     stops: list[RouteStopPlan] = field(default_factory=list)
     infeasible_job_ids: list[int] = field(default_factory=list)
     reason: str | None = None
+    return_to_home_arrival: datetime | None = None
 
 
 def solve_shift_route(
     jobs: Sequence[JobSpec],
     travel_matrix: TravelTimeMatrix,
     *,
+    home_site_id: int,
     shift_start: datetime | None = None,
-    start_site_id: int | None = None,
     time_limit_seconds: float = 5.0,
 ) -> RouteSolveResult:
-    """Solve a single worker's multi-stop route for one shift (Tier 2 VRPTW).
+    """Solve a single worker's multi-stop closed-round-trip route (Tier 2 VRPTW).
 
     Args:
         jobs: the shift's job list (stops to sequence). A 0- or 1-job list
@@ -202,15 +240,18 @@ def solve_shift_route(
             function in the first place (they take the ``SiteAssignment``
             bypass), but a multi-stop shift can still transiently have 0 or
             1 remaining jobs (e.g. after Tier 3 cancellations), so this is
-            handled cheaply rather than raising.
-        travel_matrix: cached travel times between the jobs' sites.
+            handled cheaply rather than raising. Even the 1-job case now has
+            two travel legs (home -> job, job -> home), not one.
+        travel_matrix: cached travel times between the jobs' sites and
+            ``home_site_id`` (both directions -- see the module docstring's
+            "closed round trip" note).
+        home_site_id: the worker's home site (``Worker.home_site_id``),
+            used as both the start depot and the end depot of the round
+            trip. Required -- see the module docstring's flag on this
+            replacing the old optional, one-directional ``start_site_id``.
         shift_start: the worker's shift start time, used as the route's time
             zero. If omitted, the earliest job's ``window_start`` is used
             instead (see the module docstring's flag on this).
-        start_site_id: the site the worker starts the shift at (e.g. the
-            shift's home/depot site), used to charge travel time to the
-            first stop. If omitted, the first stop is assumed reachable with
-            zero travel time (see the module docstring's flag on this).
         time_limit_seconds: OR-tools search time budget per solve attempt.
             An infeasible multi-job case may run this multiple times (once
             per candidate culprit job) to isolate which job(s) block a
@@ -223,12 +264,12 @@ def solve_shift_route(
         routing outcome.
     """
     if not jobs:
-        return RouteSolveResult(feasible=True, stops=[])
+        return RouteSolveResult(feasible=True, stops=[], return_to_home_arrival=None)
 
     epoch = shift_start if shift_start is not None else min(j.window_start for j in jobs)
 
     if len(jobs) == 1:
-        return _solve_single_job(jobs[0], epoch, travel_matrix, start_site_id)
+        return _solve_single_job(jobs[0], epoch, travel_matrix, home_site_id)
 
     hard_infeasible_ids: list[int] = []
     viable: list[JobSpec] = []
@@ -241,17 +282,17 @@ def solve_shift_route(
 
     if len(viable) <= 1:
         return _finish_reduced_to_at_most_one(
-            viable, hard_infeasible_ids, epoch, travel_matrix, start_site_id
+            viable, hard_infeasible_ids, epoch, travel_matrix, home_site_id
         )
 
-    solved_stops = _solve_mandatory_vrptw(
-        viable, epoch, travel_matrix, start_site_id, time_limit_seconds
-    )
-    if solved_stops is not None:
+    solved = _solve_mandatory_vrptw(viable, epoch, travel_matrix, home_site_id, time_limit_seconds)
+    if solved is not None:
+        solved_stops, return_to_home_arrival = solved
         feasible = not hard_infeasible_ids
         return RouteSolveResult(
             feasible=feasible,
             stops=solved_stops,
+            return_to_home_arrival=return_to_home_arrival,
             infeasible_job_ids=hard_infeasible_ids,
             reason=(
                 None
@@ -271,7 +312,7 @@ def solve_shift_route(
     culprits: set[int] = set()
     for i, candidate in enumerate(viable):
         remainder = viable[:i] + viable[i + 1 :]
-        if _is_feasible_subset(remainder, epoch, travel_matrix, start_site_id, time_limit_seconds):
+        if _is_feasible_subset(remainder, epoch, travel_matrix, home_site_id, time_limit_seconds):
             culprits.add(candidate.job_id)
 
     if culprits:
@@ -308,19 +349,22 @@ def _solve_single_job(
     job: JobSpec,
     epoch: datetime,
     travel_matrix: TravelTimeMatrix,
-    start_site_id: int | None,
+    home_site_id: int,
 ) -> RouteSolveResult:
-    stop = _single_stop_plan(job, epoch, travel_matrix, start_site_id)
-    if stop is None:
+    result = _single_stop_plan(job, epoch, travel_matrix, home_site_id)
+    if result is None:
         return RouteSolveResult(
             feasible=False,
             infeasible_job_ids=[job.job_id],
             reason=(
                 f"job {job.job_id} cannot be reached within its time window given "
-                "travel time from the shift start"
+                "travel time from the worker's home site"
             ),
         )
-    return RouteSolveResult(feasible=True, stops=[stop])
+    stop, return_to_home_arrival = result
+    return RouteSolveResult(
+        feasible=True, stops=[stop], return_to_home_arrival=return_to_home_arrival
+    )
 
 
 def _finish_reduced_to_at_most_one(
@@ -328,7 +372,7 @@ def _finish_reduced_to_at_most_one(
     hard_infeasible_ids: list[int],
     epoch: datetime,
     travel_matrix: TravelTimeMatrix,
-    start_site_id: int | None,
+    home_site_id: int,
 ) -> RouteSolveResult:
     if not viable:
         return RouteSolveResult(
@@ -338,20 +382,22 @@ def _finish_reduced_to_at_most_one(
         )
 
     job = viable[0]
-    stop = _single_stop_plan(job, epoch, travel_matrix, start_site_id)
-    if stop is None:
+    result = _single_stop_plan(job, epoch, travel_matrix, home_site_id)
+    if result is None:
         return RouteSolveResult(
             feasible=False,
             infeasible_job_ids=sorted({*hard_infeasible_ids, job.job_id}),
             reason=(
                 f"job {job.job_id} cannot be reached within its time window given "
-                "travel time from the shift start"
+                "travel time from the worker's home site"
             ),
         )
+    stop, return_to_home_arrival = result
     feasible = not hard_infeasible_ids
     return RouteSolveResult(
         feasible=feasible,
         stops=[stop],
+        return_to_home_arrival=return_to_home_arrival,
         infeasible_job_ids=hard_infeasible_ids,
         reason=(
             None
@@ -365,57 +411,70 @@ def _single_stop_plan(
     job: JobSpec,
     epoch: datetime,
     travel_matrix: TravelTimeMatrix,
-    start_site_id: int | None,
-) -> RouteStopPlan | None:
+    home_site_id: int,
+) -> tuple[RouteStopPlan, datetime] | None:
+    """Plan the one job as a closed round trip: home -> job -> home.
+
+    Returns ``(stop, return_to_home_arrival)``, or ``None`` if the job
+    cannot be reached within its window given travel time from home. The
+    return leg itself is never a feasibility gate (see the module
+    docstring's flag on this) -- it is always computed and returned
+    alongside a feasible stop.
+    """
     window_start_offset = _minutes_between(epoch, job.window_start)
     window_end_offset = _minutes_between(epoch, job.window_end)
-    travel_from_start = (
-        0 if start_site_id is None else travel_matrix.get(start_site_id, job.site_id)
-    )
-    arrival_offset = max(0, travel_from_start, window_start_offset)
+    travel_from_home = travel_matrix.get(home_site_id, job.site_id)
+    arrival_offset = max(0, travel_from_home, window_start_offset)
     if arrival_offset > window_end_offset:
         return None
     departure_offset = arrival_offset + job.duration_minutes
-    return RouteStopPlan(
+    travel_to_home = travel_matrix.get(job.site_id, home_site_id)
+    return_offset = departure_offset + travel_to_home
+    stop = RouteStopPlan(
         job_id=job.job_id,
         site_id=job.site_id,
         sequence_no=1,
         planned_arrival=epoch + timedelta(minutes=arrival_offset),
         planned_departure=epoch + timedelta(minutes=departure_offset),
     )
+    return stop, epoch + timedelta(minutes=return_offset)
 
 
 def _is_feasible_subset(
     jobs: list[JobSpec],
     epoch: datetime,
     travel_matrix: TravelTimeMatrix,
-    start_site_id: int | None,
+    home_site_id: int,
     time_limit_seconds: float,
 ) -> bool:
     if not jobs:
         return True
     if len(jobs) == 1:
-        return _single_stop_plan(jobs[0], epoch, travel_matrix, start_site_id) is not None
-    solved = _solve_mandatory_vrptw(jobs, epoch, travel_matrix, start_site_id, time_limit_seconds)
+        return _single_stop_plan(jobs[0], epoch, travel_matrix, home_site_id) is not None
+    solved = _solve_mandatory_vrptw(jobs, epoch, travel_matrix, home_site_id, time_limit_seconds)
     return solved is not None
 
 
 def _validate_travel_coverage(
     jobs: list[JobSpec],
     travel_matrix: TravelTimeMatrix,
-    start_site_id: int | None,
+    home_site_id: int,
 ) -> None:
     """Raise ``MissingTravelTimeError`` for any pair the solver might need.
 
     The VRPTW solver can choose to visit these jobs' sites in any order, so
-    every ordered pair of distinct sites among them (plus the start site, if
-    given, to each site) must be covered -- not just the pairs a particular
-    candidate sequence happens to use.
+    every ordered pair of distinct sites among them must be covered -- not
+    just the pairs a particular candidate sequence happens to use. Since the
+    route is now a closed round trip (see the module docstring), coverage
+    must include **both** directions between the home site and every job
+    site: home -> site for the outbound leg to whichever job is visited
+    first, and site -> home for the return leg from whichever job is
+    visited last.
     """
     sites = {job.site_id for job in jobs}
-    if start_site_id is not None:
-        for site_id in sites:
-            travel_matrix.get(start_site_id, site_id)
+    for site_id in sites:
+        travel_matrix.get(home_site_id, site_id)
+        travel_matrix.get(site_id, home_site_id)
     for from_site in sites:
         for to_site in sites:
             if from_site != to_site:
@@ -426,18 +485,21 @@ def _solve_mandatory_vrptw(
     jobs: list[JobSpec],
     epoch: datetime,
     travel_matrix: TravelTimeMatrix,
-    start_site_id: int | None,
+    home_site_id: int,
     time_limit_seconds: float,
-) -> list[RouteStopPlan] | None:
-    """Single-vehicle VRPTW: every job in ``jobs`` must be visited.
+) -> tuple[list[RouteStopPlan], datetime] | None:
+    """Single-vehicle VRPTW: every job in ``jobs`` must be visited, as a
+    closed round trip starting and ending at ``home_site_id``.
 
-    Returns the ordered stops if a feasible sequence exists, else ``None``.
+    Returns ``(ordered stops, return_to_home_arrival)`` if a feasible
+    sequence exists, else ``None``.
 
-    Node layout: node 0 is a single depot used as both the route's start and
-    end (an "open" route -- no return-to-depot cost is charged, since
-    ARCHITECTURE.md's Tier 2 output is just "an ordered stop sequence with
-    arrival times", not a round trip). Nodes 1..n are the jobs, in the order
-    given by ``jobs``.
+    Node layout: node 0 is a single depot (``home_site_id``) used as both
+    the route's start and end, with a real, charged travel leg each way --
+    home -> first job, and last job -> home (see the module docstring's
+    "closed round trip" note; this replaced the old "open route" design
+    that charged nothing for the return). Nodes 1..n are the jobs, in the
+    order given by ``jobs``.
     """
     # OR-tools' SWIG/pybind callback bridge does not propagate Python
     # exceptions raised inside a registered transit callback (they are
@@ -446,7 +508,7 @@ def _solve_mandatory_vrptw(
     # first time from inside `time_callback` below -- it would be lost.
     # Validate full coverage up front instead, where a raise behaves
     # normally.
-    _validate_travel_coverage(jobs, travel_matrix, start_site_id)
+    _validate_travel_coverage(jobs, travel_matrix, home_site_id)
 
     n = len(jobs)
     num_nodes = n + 1
@@ -455,22 +517,17 @@ def _solve_mandatory_vrptw(
     manager = pywrapcp.RoutingIndexManager(num_nodes, 1, depot)
     routing = pywrapcp.RoutingModel(manager)
 
-    site_by_node = [None] + [job.site_id for job in jobs]
+    site_by_node = [home_site_id] + [job.site_id for job in jobs]
     service_by_node = [0] + [job.duration_minutes for job in jobs]
 
     def time_callback(from_index: int, to_index: int) -> int:
         from_node = manager.IndexToNode(from_index)
         to_node = manager.IndexToNode(to_index)
         service = service_by_node[from_node]
-        if from_node == depot:
-            if start_site_id is None:
-                travel = 0
-            else:
-                travel = travel_matrix.get(start_site_id, site_by_node[to_node])
-        elif to_node == depot:
-            travel = 0  # open route: no charge for "returning" to the depot
-        else:
-            travel = travel_matrix.get(site_by_node[from_node], site_by_node[to_node])
+        # Uniform for every arc, including the depot legs: node 0's site is
+        # home_site_id, so home->job, job->job, and job->home (the real
+        # return leg) all resolve through the same travel_matrix lookup.
+        travel = travel_matrix.get(site_by_node[from_node], site_by_node[to_node])
         return service + travel
 
     transit_index = routing.RegisterTransitCallback(time_callback)
@@ -531,4 +588,8 @@ def _solve_mandatory_vrptw(
             )
             sequence_no += 1
         index = solution.Value(routing.NextVar(index))
-    return stops
+    # `index` is now routing.End(0) -- the depot again, closing the round
+    # trip. Its cumulative time value is the return-to-home arrival.
+    return_offset = solution.Value(time_dimension.CumulVar(index))
+    return_to_home_arrival = epoch + timedelta(minutes=return_offset)
+    return stops, return_to_home_arrival

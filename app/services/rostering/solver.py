@@ -43,14 +43,36 @@ the schema -- flagging these explicitly rather than silently picking one:
    ARCHITECTURE.md, so none is added. When multiple assignments share the
    minimum cost, CP-SAT returns *one* optimal solution with no guaranteed
    preference among them.
-5. **Geo is accepted as an input but not used.** ARCHITECTURE.md lists
-   "worker skills/geo data" as a Tier 1 input, but nowhere says how geo
-   factors into the objective or constraints (hard region match? soft travel
-   cost preference?). ``WorkerInput.region`` and ``ShiftInput.site_region``
-   are carried through for shape-completeness and for a future caller to use,
-   but this solver does **not** add any geo-based cost term or constraint.
-   Inventing one (e.g. a same-region bonus) would silently change solve
-   results without a spec basis, so it's flagged here instead.
+5. **Geo is a hard eligibility filter, not a cost term.** Per the product
+   owner's architectural correction (home location is the depot for both
+   tiers -- see ARCHITECTURE.md's "Home location as depot" section), a
+   worker can only be assigned to a shift when ``worker.region ==
+   shift.site_region``. This is enforced exactly like the skill/eligibility
+   filter already was: a worker missing a region match is simply never a
+   candidate for that shift, computed up front alongside the
+   skill/``AwardCostMatrix.eligible`` check, before the CP-SAT model is even
+   built. The **objective is unchanged** -- still exactly total ``pay_cost``,
+   no distance/travel term -- this is a feasibility filter, not a cost
+   preference.
+
+   "Region compatible" is implemented here as plain string equality on the
+   ``region``/``site_region`` fields already threaded through
+   ``WorkerInput``/``ShiftInput``. Nothing in ARCHITECTURE.md or the schema
+   defines a coarser notion of compatibility (e.g. adjacent-region lists, a
+   region hierarchy) -- if the business needs one later, it belongs as an
+   explicit input (e.g. a compatible-regions set) rather than invented here.
+   FLAG FOR REVIEW: a ``None`` on *either* side (``WorkerInput.region`` or
+   ``ShiftInput.site_region``) is treated as "no constraint" -- i.e. that
+   candidate is **not** excluded on region grounds -- rather than as a
+   guaranteed mismatch. Both fields remain individually optional on their
+   dataclasses (mirroring the nullable ``Worker.region``/``Site.region``
+   columns), and callers/tests that never populate region data at all (as
+   every pre-existing rostering test here does) get the old
+   region-agnostic behaviour unchanged. A caller that has resolved
+   ``Worker.home_site_id`` to a real region should always populate
+   ``WorkerInput.region`` so the filter actually bites; a `None` here
+   should be read as "region unknown to this solve", not "no home region",
+   since every ``Worker`` now has a mandatory ``home_site_id``.
 """
 
 from __future__ import annotations
@@ -89,8 +111,10 @@ class WorkerInput:
     """A worker, as the solver needs to see it.
 
     ``skills`` mirrors ``Worker.skills`` (see app/models/worker.py). ``region``
-    mirrors ``Worker.region`` and is carried through informationally only --
-    see module docstring point 5 (geo is not used by this solver).
+    mirrors ``Worker.region`` (the worker's home region, normally resolved
+    from ``Worker.home_site_id``'s ``Site.region``) and is used as a hard
+    eligibility filter against ``ShiftInput.site_region`` -- see module
+    docstring point 5.
     """
 
     id: int
@@ -103,8 +127,9 @@ class ShiftInput:
     """A shift requirement, as the solver needs to see it.
 
     Mirrors ``Shift`` (see app/models/shift.py). ``site_region`` -- the
-    region of the shift's ``Site`` -- is carried through informationally
-    only, same caveat as ``WorkerInput.region``.
+    region of the shift's ``Site`` -- is used as a hard eligibility filter
+    against ``WorkerInput.region``, same caveat on ``None`` handling as
+    ``WorkerInput.region`` (see module docstring point 5).
     """
 
     id: int
@@ -373,6 +398,13 @@ def solve_roster(
         matrix_by_ws[key] = entry
         matrix_by_worker.setdefault(entry.worker_id, []).append(entry)
 
+    def _region_compatible(worker: WorkerInput, shift: ShiftInput) -> bool:
+        # A None on either side means "region unknown to this solve" -- not
+        # enforced as a mismatch. See module docstring point 5.
+        if worker.region is None or shift.site_region is None:
+            return True
+        return worker.region == shift.site_region
+
     candidates_by_shift: dict[int, list[WorkerInput]] = {}
     for shift in shifts:
         candidates_by_shift[shift.id] = [
@@ -381,14 +413,16 @@ def solve_roster(
             if shift.required_skill in worker.skills
             and (entry := matrix_by_ws.get((worker.id, shift.id))) is not None
             and entry.eligible
+            and _region_compatible(worker, shift)
         ]
 
     unfillable = [sid for sid, candidates in candidates_by_shift.items() if not candidates]
     if unfillable:
         diagnostics = [
             f"Shift {sid} ({shift_by_id[sid].required_skill}): no eligible worker with "
-            "the required skill is available (checked AwardCostMatrix.eligible and "
-            "Worker.skills)."
+            "the required skill and a compatible home region is available (checked "
+            "AwardCostMatrix.eligible, Worker.skills, and Worker.region vs. "
+            "Shift.site_region)."
             for sid in sorted(unfillable)
         ]
         return RosterSolution(

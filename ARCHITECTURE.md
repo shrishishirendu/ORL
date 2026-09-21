@@ -22,11 +22,13 @@ Engine — not in ORL.
 
 - **Tempo**: batch, weekly or fortnightly.
 - **Engine**: OR-Tools CP-SAT.
-- **Inputs**: `AwardCostMatrix`, worker skills/geo data, shift requirements.
+- **Inputs**: `AwardCostMatrix`, worker skills/geo data (including each worker's home
+  region — see "Home location as depot" below), shift requirements.
 - **Output**: `Roster` — a worker → day → shift assignment.
 - **Objective**: minimize total **dollar cost** (via `AwardCostMatrix.pay_cost`), not raw
-  hours worked. Eligibility and min/max hour rules from `AwardCostMatrix` constrain
-  feasible assignments.
+  hours worked. Eligibility and min/max hour rules from `AwardCostMatrix`, plus the
+  worker-home-region-vs-shift-site-region eligibility filter, constrain feasible
+  assignments — none of these add a cost term.
 
 Tier 1 is the slow, optimization-heavy tier: it runs infrequently and produces the roster
 that Tiers 2 and 3 then operate within for the rest of the period.
@@ -37,13 +39,39 @@ that Tiers 2 and 3 then operate within for the rest of the period.
 - **Engine**: OR-Tools Routing (VRPTW — vehicle routing with time windows).
 - **Inputs**: the shift's worker assignments from the `Roster` (Tier 1's output), the job
   list for that shift, and the cached Travel Matrix.
-- **Output**: `Route` — an ordered stop sequence with arrival times per worker.
+- **Output**: `Route` — an ordered stop sequence with arrival times per worker, as a
+  **closed round trip** starting and ending at the worker's home site (see "Home
+  location as depot" below).
 - **Scope**: only **multi-stop roles** go through VRPTW routing. **Single-site roles skip
   this tier entirely** via a simple "Site Assignment" path — there is nothing to sequence
   when a worker has one site for the shift.
 
 Tier 2 takes the Roster as fixed input: it does not reassign which worker is on shift, only
 how a multi-stop worker's jobs are ordered and timed within that shift.
+
+## Home location as depot (Tier 1 and Tier 2)
+
+A mobile workforce's whole point is that workers travel from home: each
+worker's day starts at their **home location** and, after their last job,
+they return there. Every `Worker` has a mandatory `home_site_id` (FK to
+`Site`) capturing this. It feeds both tiers, in different ways:
+
+- **Tier 1 (rostering)**: home location is a **hard eligibility filter**,
+  not a cost term. A worker can only be rostered onto a shift when their
+  home region is compatible with the shift's site region (the solver checks
+  `Worker.region` -- normally resolved from `home_site_id`'s `Site.region`
+  -- against the shift's `Site.region`). Tier 1's objective remains
+  **pay-cost-only**: no distance/travel term is added for this. A worker
+  whose home region doesn't match simply isn't a candidate for that shift,
+  exactly like a worker missing the required skill or marked ineligible in
+  the `AwardCostMatrix`.
+- **Tier 2 (dispatch/routing)**: home location is the **depot for a closed
+  round trip**. The VRPTW route starts at the worker's home site and
+  returns to it after the last job -- both legs (home -> first job, last
+  job -> home) are real, travel-time-charged legs, not a free "open route"
+  end. The cached Travel Matrix must therefore cover home <-> every job
+  site used in a shift's solve, in both directions, the same way it must
+  cover every job-site pair.
 
 ## Tier 3 — Intra-day Re-optimization (event-driven)
 

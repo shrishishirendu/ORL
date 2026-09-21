@@ -7,7 +7,7 @@ RosterAssignment rows.
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, String
+from sqlalchemy import Boolean, ForeignKey, String
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -31,6 +31,18 @@ class Worker(Base):
     FK to ``Site``) since a worker's home region is a coarse
     solver/eligibility input, distinct from the specific ``Site`` a shift or
     job occurs at.
+
+    ``home_site_id`` is the worker's home location -- the depot for both
+    tiers per ARCHITECTURE.md's "Home location as depot" section: Tier 1
+    uses ``home_site_id``'s ``Site.region`` as a hard eligibility filter
+    (a worker can only be rostered onto a shift whose site is in a
+    compatible region), and Tier 2 uses it as the fixed start *and* end node
+    of the per-shift VRPTW round trip. It is a required (``NOT NULL``) FK --
+    every worker has exactly one home location -- unlike the coarser,
+    optional ``region`` column above, which remains as a cheap/free-text
+    fallback/override for eligibility when a caller doesn't want to resolve
+    it via the FK join (see the rostering solver's docstring for how the two
+    interact).
     """
 
     __tablename__ = "worker"
@@ -39,8 +51,12 @@ class Worker(Base):
     name: Mapped[str] = mapped_column(String(255))
     skills: Mapped[list[str]] = mapped_column(ARRAY(String(100)), default=list)
     region: Mapped[str | None] = mapped_column(String(100), index=True, default=None)
+    home_site_id: Mapped[int] = mapped_column(ForeignKey("site.id"), index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
+    home_site: Mapped[Site] = relationship(  # noqa: F821
+        back_populates="workers_home_here"
+    )
     award_cost_rows: Mapped[list[AwardCostMatrix]] = relationship(  # noqa: F821
         back_populates="worker"
     )
@@ -51,5 +67,6 @@ class Worker(Base):
     def __repr__(self) -> str:
         return (
             f"Worker(id={self.id!r}, name={self.name!r}, "
-            f"region={self.region!r}, active={self.active!r})"
+            f"region={self.region!r}, home_site_id={self.home_site_id!r}, "
+            f"active={self.active!r})"
         )

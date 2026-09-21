@@ -7,6 +7,11 @@ Covers the three cases the task calls out:
 (b) an infeasible case where no sequence can satisfy every time window given
     travel times, and
 (c) the 0/1-job short-circuit path that bypasses OR-tools entirely.
+
+Plus (d): the closed-round-trip behaviour added per the product owner's
+architectural correction -- ``home_site_id`` is a required start *and* end
+depot, both legs are really charged, and the round trip's return arrival is
+reported and actually reflects the modeled travel.
 """
 
 from __future__ import annotations
@@ -29,8 +34,10 @@ def _dt(hour: int, minute: int = 0) -> datetime:
     return SHIFT_START.replace(hour=hour, minute=minute)
 
 
-# Site ids used across tests.
-SITE_A, SITE_B, SITE_C = 1, 2, 3
+# Site ids used across tests. HOME is the worker's home/depot site, distinct
+# from the job sites, so every test exercises a real (non-zero) outbound and
+# return leg unless a test deliberately says otherwise.
+SITE_A, SITE_B, SITE_C, HOME = 1, 2, 3, 4
 
 
 def build_travel_matrix() -> TravelTimeMatrix:
@@ -39,6 +46,9 @@ def build_travel_matrix() -> TravelTimeMatrix:
             (SITE_A, SITE_B): 20,
             (SITE_B, SITE_C): 15,
             (SITE_A, SITE_C): 40,
+            (HOME, SITE_A): 10,
+            (HOME, SITE_B): 30,
+            (HOME, SITE_C): 50,
         }
     )
 
@@ -71,7 +81,9 @@ class TestFeasibleMultiStop:
             ),
         ]
 
-        result = solve_shift_route(jobs, build_travel_matrix(), shift_start=SHIFT_START)
+        result = solve_shift_route(
+            jobs, build_travel_matrix(), home_site_id=HOME, shift_start=SHIFT_START
+        )
 
         assert result.feasible is True
         assert result.infeasible_job_ids == []
@@ -79,13 +91,14 @@ class TestFeasibleMultiStop:
 
         by_job = {stop.job_id: stop for stop in result.stops}
 
-        # Job 1: arrives right at shift start (no travel needed to the first
-        # stop when no start_site_id is given), serves for 15 minutes.
+        # Job 1: home -> A is 10 minutes travel, so the earliest arrival is
+        # 8:10 (not 8:00 -- there is no more "free" first leg now that the
+        # route is a real round trip from home). Serves for 15 minutes.
         assert by_job[1].sequence_no == 1
-        assert by_job[1].planned_arrival == _dt(8, 0)
-        assert by_job[1].planned_departure == _dt(8, 15)
+        assert by_job[1].planned_arrival == _dt(8, 10)
+        assert by_job[1].planned_departure == _dt(8, 25)
 
-        # Job 2: earliest reachable is 8:15 + 20min travel = 8:35, but its
+        # Job 2: earliest reachable is 8:25 + 20min travel = 8:45, but its
         # window doesn't open until 9:30, so the worker waits.
         assert by_job[2].sequence_no == 2
         assert by_job[2].planned_arrival == _dt(9, 30)
@@ -96,6 +109,10 @@ class TestFeasibleMultiStop:
         assert by_job[3].planned_arrival == _dt(11, 0)
         assert by_job[3].planned_departure == _dt(11, 10)
 
+        # The round trip's return leg: C -> home is 50 minutes, charged for
+        # real (this is the whole point of the closed-round-trip change).
+        assert result.return_to_home_arrival == _dt(12, 0)
+
     def test_visiting_in_input_order_would_have_been_infeasible(self) -> None:
         # Sanity check on the fixture itself: A -> C directly (skipping B)
         # takes 40 minutes, so a naive "solve then check A->B->C in a fixed
@@ -105,6 +122,103 @@ class TestFeasibleMultiStop:
         travel = build_travel_matrix()
         assert travel.get(SITE_A, SITE_C) == 40
         assert travel.get(SITE_A, SITE_B) + travel.get(SITE_B, SITE_C) == 35
+
+
+class TestClosedRoundTrip:
+    """(d) The route is a closed round trip: home is both depot ends, and
+    the worker's home location genuinely affects the schedule."""
+
+    def test_changing_home_site_changes_the_schedule(self) -> None:
+        """The exact same job list, solved with two different home sites
+        that sit at different travel distances from the first/last job,
+        must produce different planned times -- proof the home site is
+        actually wired into the model as the start/end depot, not ignored.
+        """
+        jobs = [
+            JobSpec(
+                job_id=1,
+                site_id=SITE_A,
+                window_start=_dt(8, 0),
+                window_end=_dt(12, 0),
+                duration_minutes=15,
+            ),
+            JobSpec(
+                job_id=2,
+                site_id=SITE_B,
+                window_start=_dt(8, 0),
+                window_end=_dt(12, 0),
+                duration_minutes=15,
+            ),
+        ]
+        # A second candidate home site, closer to both jobs than HOME is.
+        NEAR_HOME = 5
+        travel = TravelTimeMatrix.from_symmetric_pairs(
+            {
+                (SITE_A, SITE_B): 20,
+                (HOME, SITE_A): 10,
+                (HOME, SITE_B): 30,
+                (NEAR_HOME, SITE_A): 2,
+                (NEAR_HOME, SITE_B): 3,
+            }
+        )
+
+        far_result = solve_shift_route(
+            jobs, travel, home_site_id=HOME, shift_start=SHIFT_START
+        )
+        near_result = solve_shift_route(
+            jobs, travel, home_site_id=NEAR_HOME, shift_start=SHIFT_START
+        )
+
+        assert far_result.feasible is True
+        assert near_result.feasible is True
+
+        far_first_stop = far_result.stops[0]
+        near_first_stop = near_result.stops[0]
+        # Different home -> different outbound travel -> different first
+        # arrival, and a different return-to-home arrival too.
+        assert far_first_stop.planned_arrival != near_first_stop.planned_arrival
+        assert far_result.return_to_home_arrival != near_result.return_to_home_arrival
+        # The near home genuinely finishes the round trip sooner.
+        assert near_result.return_to_home_arrival < far_result.return_to_home_arrival
+
+    def test_missing_return_leg_entry_raises_even_when_outbound_leg_exists(
+        self,
+    ) -> None:
+        """The travel matrix has home -> A but not the reverse (A -> home).
+        A round trip needs both directions -- an "open route" matrix that
+        only ever covered the outbound leg must now raise, not silently
+        route home for free.
+        """
+        jobs = [
+            JobSpec(
+                job_id=1,
+                site_id=SITE_A,
+                window_start=_dt(8, 0),
+                window_end=_dt(9, 0),
+                duration_minutes=15,
+            ),
+            JobSpec(
+                job_id=2,
+                site_id=SITE_B,
+                window_start=_dt(9, 30),
+                window_end=_dt(10, 30),
+                duration_minutes=20,
+            ),
+        ]
+        one_directional_travel = TravelTimeMatrix(
+            {
+                (SITE_A, SITE_B): 20,
+                (SITE_B, SITE_A): 20,
+                (HOME, SITE_A): 10,
+                (HOME, SITE_B): 30,
+                # Deliberately missing: (SITE_A, HOME) and (SITE_B, HOME).
+            }
+        )
+
+        with pytest.raises(MissingTravelTimeError):
+            solve_shift_route(
+                jobs, one_directional_travel, home_site_id=HOME, shift_start=SHIFT_START
+            )
 
 
 class TestInfeasible:
@@ -119,6 +233,9 @@ class TestInfeasible:
                 (SITE_A, SITE_B): 45,
                 (SITE_B, SITE_C): 15,
                 (SITE_A, SITE_C): 40,
+                (HOME, SITE_A): 5,
+                (HOME, SITE_B): 5,
+                (HOME, SITE_C): 5,
             }
         )
         jobs = [
@@ -145,7 +262,7 @@ class TestInfeasible:
             ),
         ]
 
-        result = solve_shift_route(jobs, travel, shift_start=SHIFT_START)
+        result = solve_shift_route(jobs, travel, home_site_id=HOME, shift_start=SHIFT_START)
 
         assert result.feasible is False
         assert result.reason is not None
@@ -173,7 +290,7 @@ class TestInfeasible:
             ),
         ]
 
-        result = solve_shift_route(jobs, travel, shift_start=SHIFT_START)
+        result = solve_shift_route(jobs, travel, home_site_id=HOME, shift_start=SHIFT_START)
 
         assert result.feasible is False
         assert result.infeasible_job_ids == [1]
@@ -201,18 +318,24 @@ class TestInfeasible:
         ]
 
         with pytest.raises(MissingTravelTimeError):
-            solve_shift_route(jobs, incomplete_travel, shift_start=SHIFT_START)
+            solve_shift_route(
+                jobs, incomplete_travel, home_site_id=HOME, shift_start=SHIFT_START
+            )
 
 
 class TestShortCircuit:
     """(c) The 0/1-job short-circuit path bypasses the VRPTW machinery."""
 
     def test_zero_jobs_is_trivially_feasible_with_no_stops(self) -> None:
-        result = solve_shift_route([], build_travel_matrix(), shift_start=SHIFT_START)
+        result = solve_shift_route(
+            [], build_travel_matrix(), home_site_id=HOME, shift_start=SHIFT_START
+        )
 
         assert result.feasible is True
         assert result.stops == []
         assert result.infeasible_job_ids == []
+        # The worker never left home, so there is no "return" to report.
+        assert result.return_to_home_arrival is None
 
     def test_single_job_within_window_is_feasible(self) -> None:
         job = JobSpec(
@@ -223,17 +346,23 @@ class TestShortCircuit:
             duration_minutes=30,
         )
 
-        result = solve_shift_route([job], build_travel_matrix(), shift_start=SHIFT_START)
+        result = solve_shift_route(
+            [job], build_travel_matrix(), home_site_id=HOME, shift_start=SHIFT_START
+        )
 
         assert result.feasible is True
         assert len(result.stops) == 1
         stop = result.stops[0]
         assert stop.job_id == 1
         assert stop.sequence_no == 1
-        assert stop.planned_arrival == _dt(8, 0)
-        assert stop.planned_departure == _dt(8, 30)
+        # home -> A is 10 minutes: even a single job now has a real outbound
+        # leg, not a free start.
+        assert stop.planned_arrival == _dt(8, 10)
+        assert stop.planned_departure == _dt(8, 40)
+        # And a real return leg: A -> home is another 10 minutes.
+        assert result.return_to_home_arrival == _dt(8, 50)
 
-    def test_single_job_accounts_for_travel_from_start_site(self) -> None:
+    def test_single_job_accounts_for_travel_from_home_site(self) -> None:
         job = JobSpec(
             job_id=1,
             site_id=SITE_B,
@@ -245,13 +374,15 @@ class TestShortCircuit:
         result = solve_shift_route(
             [job],
             build_travel_matrix(),
+            home_site_id=SITE_A,
             shift_start=SHIFT_START,
-            start_site_id=SITE_A,
         )
 
         assert result.feasible is True
-        # 20 minutes travel from the start site (A) to the job's site (B).
+        # 20 minutes travel from home (A) to the job's site (B).
         assert result.stops[0].planned_arrival == _dt(8, 20)
+        # And the same 20 minutes back home after the 10-minute job.
+        assert result.return_to_home_arrival == _dt(8, 50)
 
     def test_single_job_outside_reachable_window_is_infeasible(self) -> None:
         job = JobSpec(
@@ -265,11 +396,12 @@ class TestShortCircuit:
         result = solve_shift_route(
             [job],
             build_travel_matrix(),
+            home_site_id=SITE_A,
             shift_start=SHIFT_START,
-            start_site_id=SITE_A,
         )
 
-        # Travel from A to B alone (20 min) already exceeds the window end.
+        # Travel from home (A) to B alone (20 min) already exceeds the
+        # window end.
         assert result.feasible is False
         assert result.infeasible_job_ids == [1]
 
@@ -290,5 +422,7 @@ class TestShortCircuit:
             window_end=_dt(9, 0),
             duration_minutes=15,
         )
-        solve_shift_route([], build_travel_matrix(), shift_start=SHIFT_START)
-        solve_shift_route([job], build_travel_matrix(), shift_start=SHIFT_START)
+        solve_shift_route([], build_travel_matrix(), home_site_id=HOME, shift_start=SHIFT_START)
+        solve_shift_route(
+            [job], build_travel_matrix(), home_site_id=HOME, shift_start=SHIFT_START
+        )
