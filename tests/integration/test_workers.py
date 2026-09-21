@@ -56,9 +56,7 @@ async def test_solve_roster_task_persists_and_returns_a_json_safe_dict(db_sessio
     await make_award_row(db_session, worker, shift, pay_cost=75.0)
     await db_session.commit()
 
-    result = await solve_roster_task(
-        {}, SHIFT_DATE.isoformat(), SHIFT_DATE.isoformat()
-    )
+    result = await solve_roster_task({}, SHIFT_DATE.isoformat(), SHIFT_DATE.isoformat())
 
     assert result["status"] == "solved"
     assert result["total_cost"] == pytest.approx(75.0)

@@ -34,9 +34,7 @@ class Roster(Base):
     """
 
     __tablename__ = "roster"
-    __table_args__ = (
-        Index("ix_roster_period", "period_start", "period_end"),
-    )
+    __table_args__ = (Index("ix_roster_period", "period_start", "period_end"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     period_start: Mapped[date_] = mapped_column(Date)

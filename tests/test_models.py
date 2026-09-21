@@ -149,9 +149,9 @@ def test_expected_unique_constraints_present() -> None:
     assert frozenset({"worker_id", "day", "shift_id"}) in unique_constraint_columns(
         "award_cost_matrix"
     )
-    assert frozenset(
-        {"roster_id", "worker_id", "day", "shift_id"}
-    ) in unique_constraint_columns("roster_assignment")
+    assert frozenset({"roster_id", "worker_id", "day", "shift_id"}) in unique_constraint_columns(
+        "roster_assignment"
+    )
     assert frozenset({"route_id", "sequence_no"}) in unique_constraint_columns("route_stop")
     assert frozenset({"route_id", "job_id"}) in unique_constraint_columns("route_stop")
     assert frozenset({"from_site_id", "to_site_id"}) in unique_constraint_columns(
@@ -236,8 +236,6 @@ def test_metadata_creates_cleanly_against_sqlite() -> None:
     sqlite_metadata.create_all(engine)
 
     with engine.connect() as conn:
-        result = conn.execute(
-            sa.text("SELECT name FROM sqlite_master WHERE type='table'")
-        )
+        result = conn.execute(sa.text("SELECT name FROM sqlite_master WHERE type='table'"))
         created = {row[0] for row in result}
     assert set(EXPECTED_TABLES) <= created

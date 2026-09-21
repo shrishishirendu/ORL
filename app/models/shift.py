@@ -30,9 +30,7 @@ class Shift(Base):
     """
 
     __tablename__ = "shift"
-    __table_args__ = (
-        Index("ix_shift_date_required_skill", "date", "required_skill"),
-    )
+    __table_args__ = (Index("ix_shift_date_required_skill", "date", "required_skill"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     date: Mapped[date_] = mapped_column(Date, index=True)

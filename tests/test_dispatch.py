@@ -162,9 +162,7 @@ class TestClosedRoundTrip:
             }
         )
 
-        far_result = solve_shift_route(
-            jobs, travel, home_site_id=HOME, shift_start=SHIFT_START
-        )
+        far_result = solve_shift_route(jobs, travel, home_site_id=HOME, shift_start=SHIFT_START)
         near_result = solve_shift_route(
             jobs, travel, home_site_id=NEAR_HOME, shift_start=SHIFT_START
         )
@@ -318,9 +316,7 @@ class TestInfeasible:
         ]
 
         with pytest.raises(MissingTravelTimeError):
-            solve_shift_route(
-                jobs, incomplete_travel, home_site_id=HOME, shift_start=SHIFT_START
-            )
+            solve_shift_route(jobs, incomplete_travel, home_site_id=HOME, shift_start=SHIFT_START)
 
 
 class TestShortCircuit:
@@ -423,6 +419,4 @@ class TestShortCircuit:
             duration_minutes=15,
         )
         solve_shift_route([], build_travel_matrix(), home_site_id=HOME, shift_start=SHIFT_START)
-        solve_shift_route(
-            [job], build_travel_matrix(), home_site_id=HOME, shift_start=SHIFT_START
-        )
+        solve_shift_route([job], build_travel_matrix(), home_site_id=HOME, shift_start=SHIFT_START)

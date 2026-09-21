@@ -36,11 +36,73 @@ uvicorn app.main:app --reload
 You will still need Postgres and Redis available locally (or via `docker compose up postgres redis`)
 and `DATABASE_URL` / `REDIS_URL` set accordingly in `.env`.
 
+### Database migrations (Alembic)
+
+Schema changes are managed with Alembic. With Postgres up and `DATABASE_URL` set (`.env` or
+the environment), bring the database to the latest schema:
+
+```bash
+alembic upgrade head
+```
+
+Run this once after `docker compose up postgres` / `docker compose up --build` for a fresh
+database, and again any time you pull in new migrations under `alembic/versions/`.
+
+### Starting the API
+
+```bash
+uvicorn app.main:app --reload
+```
+
+This serves the FastAPI app at `http://localhost:8000` (`--reload` is for local dev only).
+A health check is at `GET /health`.
+
+### Starting the arq worker
+
+The `/rostering/solve`, `/dispatch/solve`, and `/events` endpoints enqueue work rather than
+solving inline — an `arq` worker process is what actually picks jobs up and runs the Tier
+1/2/3 services against the database. Run it alongside the API:
+
+```bash
+arq app.workers.tasks.WorkerSettings
+```
+
 ### Running tests
 
 ```bash
 pytest
 ```
+
+The suite includes real Postgres + Redis end-to-end integration tests under
+`tests/integration/` — start Postgres and Redis first (`docker compose up postgres redis`)
+and run migrations (`alembic upgrade head`); those tests skip themselves if Postgres isn't
+reachable.
+
+### End-to-end example: submitting a rostering solve
+
+With Postgres, Redis, the API (`uvicorn app.main:app --reload`), and a worker
+(`arq app.workers.tasks.WorkerSettings`) all running, enqueue a Tier 1 batch solve for a
+rostering period:
+
+```bash
+curl -X POST http://localhost:8000/rostering/solve \
+  -H "Content-Type: application/json" \
+  -d '{"period_start": "2026-09-28", "period_end": "2026-10-04"}'
+# => {"job_id": "..."}
+```
+
+Poll the returned `job_id` for its status/result once the worker has picked it up:
+
+```bash
+curl http://localhost:8000/rostering/jobs/<job_id>
+# => {"job_id": "...", "status": "complete", "success": true, "result": {"roster_id": ..., "status": "optimal", ...}}
+```
+
+`POST /dispatch/solve` (Tier 2, per-shift routing) and `POST /events` (Tier 3, event-driven
+re-optimization — `job_cancelled` / `worker_sick` / `visit_overran`) follow the same
+enqueue-then-poll pattern, at `GET /dispatch/jobs/{job_id}` and `GET /events/jobs/{job_id}`
+respectively. See [ARCHITECTURE.md](ARCHITECTURE.md#api-surface-and-job-polling) for the
+full request/response shapes.
 
 ## Folder layout
 
@@ -48,7 +110,7 @@ pytest
 app/
   api/                  FastAPI routers (HTTP surface of the service layer)
   core/                 Settings (pydantic-settings) and the async DB engine/session factory
-  models/               SQLAlchemy ORM models (declarative Base only for now)
+  models/               SQLAlchemy ORM models (Roster, Route, Shift, Worker, Site, ...)
   schemas/              Pydantic request/response schemas
   services/
     rostering/          Tier 1 — batch rostering (OR-Tools CP-SAT)
@@ -56,10 +118,11 @@ app/
     reoptimization/     Tier 3 — event-driven intra-day re-optimization
   workers/              Async task queue workers (arq)
   main.py               FastAPI app entrypoint
-tests/                  Test suite
+alembic/                Database migrations (see "Database migrations" above)
+tests/                  Test suite (tests/integration/ needs live Postgres/Redis)
 Dockerfile              Multi-stage build for the API service
 docker-compose.yml      Postgres, Redis, and the API service
 ```
 
-No solver logic, domain models, or database migrations are implemented yet — this is the
-project scaffold. See ARCHITECTURE.md for what each tier will do.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full tier design, the API surface, and the
+job-status polling pattern used by all three `/solve`/`/events` endpoints.

@@ -29,16 +29,12 @@ async def submit_event(
     (discriminated on ``event_type``) and enqueue it for
     ``handle_reoptimization_event_task``.
     """
-    job = await redis.enqueue_job(
-        "handle_reoptimization_event_task", event.model_dump(mode="json")
-    )
+    job = await redis.enqueue_job("handle_reoptimization_event_task", event.model_dump(mode="json"))
     assert job is not None
     return JobEnqueuedResponse(job_id=job.job_id)
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)
-async def get_event_job(
-    job_id: str, redis: ArqRedis = Depends(get_arq_redis)
-) -> JobStatusResponse:
+async def get_event_job(job_id: str, redis: ArqRedis = Depends(get_arq_redis)) -> JobStatusResponse:
     """Poll a previously-enqueued Tier 3 event job's status/result."""
     return await get_job_status(redis, job_id)

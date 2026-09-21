@@ -252,9 +252,7 @@ def _build_model(
     for shift in shifts:
         candidates = candidates_by_shift[shift.id]
         for worker in candidates:
-            assign_vars[(worker.id, shift.id)] = model.NewBoolVar(
-                f"x_w{worker.id}_s{shift.id}"
-            )
+            assign_vars[(worker.id, shift.id)] = model.NewBoolVar(f"x_w{worker.id}_s{shift.id}")
 
         coverage_terms = [assign_vars[(w.id, shift.id)] for w in candidates]
         if allow_unfilled:
@@ -269,9 +267,7 @@ def _build_model(
     # No-double-booking: one optional interval per (worker, candidate shift),
     # present iff that assignment is chosen; CP-SAT's NoOverlap keeps any two
     # present intervals for the same worker from overlapping in time.
-    intervals_by_worker: dict[int, list[cp_model.IntervalVar]] = {
-        w.id: [] for w in workers
-    }
+    intervals_by_worker: dict[int, list[cp_model.IntervalVar]] = {w.id: [] for w in workers}
     for shift in shifts:
         start_offset, duration = _shift_window(shift, epoch)
         for worker in candidates_by_shift[shift.id]:
@@ -350,9 +346,7 @@ def _diagnose_infeasibility(
         # Should not happen (the relaxed model is always feasible), but don't
         # pretend to have a diagnosis we don't.
         return [s.id for s in shifts]
-    return sorted(
-        shift_id for shift_id, var in unfilled_vars.items() if solver.Value(var) == 1
-    )
+    return sorted(shift_id for shift_id, var in unfilled_vars.items() if solver.Value(var) == 1)
 
 
 def solve_roster(
@@ -468,9 +462,7 @@ def solve_roster(
                     )
                 )
                 total_cost += entry.pay_cost
-        solve_status = (
-            SolveStatus.OPTIMAL if status == cp_model.OPTIMAL else SolveStatus.FEASIBLE
-        )
+        solve_status = SolveStatus.OPTIMAL if status == cp_model.OPTIMAL else SolveStatus.FEASIBLE
         return RosterSolution(
             status=solve_status,
             assignments=assignments,

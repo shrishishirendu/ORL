@@ -104,6 +104,42 @@ level.
   are triggered by incoming events (job cancelled / worker sick / visit overran) reaching
   the API layer.
 
+## API surface and job polling
+
+The FastAPI service layer (`app/api/`) exposes three `POST` endpoints, one per tier, all
+following the same enqueue-then-poll shape: the `POST` returns immediately with a
+`{"job_id": ...}` (`JobEnqueuedResponse`), and a matching `GET .../jobs/{job_id}` reports
+that job's `arq` status/result (`JobStatusResponse`: `status` is one of arq's own
+`deferred`/`queued`/`in_progress`/`complete`/`not_found` values, with `success`/`result`
+populated only once the job has finished). Nothing solves inline on the request — every
+`POST` only enqueues a job onto the `arq` queue backed by Redis; an `arq` worker process
+(`arq app.workers.tasks.WorkerSettings`) is what actually calls into the Tier 1/2/3 service
+layer and persists the result.
+
+- **`POST /rostering/solve`** / **`GET /rostering/jobs/{job_id}`** — Tier 1. Takes
+  `period_start`/`period_end` and enqueues `solve_roster_task`, which runs
+  `solve_and_persist_roster` and persists a `Roster`.
+- **`POST /dispatch/solve`** / **`GET /dispatch/jobs/{job_id}`** — Tier 2. Takes a
+  `roster_assignment_id` and enqueues `solve_route_task`, which runs
+  `solve_and_persist_route`. A single-site `RosterAssignment` still resolves cleanly through
+  this same endpoint — the service bypasses VRPTW and persists a `SiteAssignment` instead of
+  a `Route` (see `DispatchOutcome.mode`).
+- **`POST /events`** / **`GET /events/jobs/{job_id}`** — Tier 3. Takes one of the three event
+  shapes discriminated on `event_type` (`job_cancelled` / `worker_sick` / `visit_overran`;
+  malformed payloads for a given type — e.g. `visit_overran` missing `current_time` — are
+  rejected as a 422 by request validation before ever reaching the queue) and enqueues
+  `handle_reoptimization_event_task`, which runs `handle_and_persist_event`.
+- **`GET /health`** — basic liveness check, not part of the job-polling pattern above.
+
+**Escalation chaining.** When a Tier 3 event's outcome is `ESCALATED_TO_TIER1` (the scoped
+Tier 2 re-solve came back infeasible — see "Tier 3" above), `handle_reoptimization_event_task`
+itself enqueues a follow-up `solve_roster_task` onto the same queue, using the escalating
+shift's own `date` as both `period_start` and `period_end` (the smallest period guaranteed to
+re-cover the shift that triggered the escalation). This is the one path that triggers a Tier 1
+re-solve automatically rather than via an explicit `POST /rostering/solve` call; the
+`escalation_roster_job_id` returned alongside the event's own result is that chained job's id,
+pollable the same way at `GET /rostering/jobs/{escalation_roster_job_id}`.
+
 ## Summary of tempo distinctions
 
 | Tier | Tempo | Engine | Re-solve scope |

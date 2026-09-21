@@ -56,15 +56,9 @@ class ReoptimizationEvent(Base):
         Enum(ReoptimizationEventType, name="reoptimization_event_type"), index=True
     )
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    route_id: Mapped[int | None] = mapped_column(
-        ForeignKey("route.id"), index=True, default=None
-    )
-    shift_id: Mapped[int | None] = mapped_column(
-        ForeignKey("shift.id"), index=True, default=None
-    )
-    worker_id: Mapped[int | None] = mapped_column(
-        ForeignKey("worker.id"), index=True, default=None
-    )
+    route_id: Mapped[int | None] = mapped_column(ForeignKey("route.id"), index=True, default=None)
+    shift_id: Mapped[int | None] = mapped_column(ForeignKey("shift.id"), index=True, default=None)
+    worker_id: Mapped[int | None] = mapped_column(ForeignKey("worker.id"), index=True, default=None)
     resolution: Mapped[ReoptimizationResolution | None] = mapped_column(
         Enum(ReoptimizationResolution, name="reoptimization_resolution"), default=None
     )

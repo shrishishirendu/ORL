@@ -93,13 +93,17 @@ async def load_travel_matrix(session: AsyncSession, site_ids: set[int]) -> Trave
     if len(site_ids) < 2:
         return TravelTimeMatrix({})
     rows = (
-        await session.execute(
-            select(TravelMatrixEntry).where(
-                TravelMatrixEntry.from_site_id.in_(site_ids),
-                TravelMatrixEntry.to_site_id.in_(site_ids),
+        (
+            await session.execute(
+                select(TravelMatrixEntry).where(
+                    TravelMatrixEntry.from_site_id.in_(site_ids),
+                    TravelMatrixEntry.to_site_id.in_(site_ids),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return TravelTimeMatrix({(r.from_site_id, r.to_site_id): r.travel_minutes for r in rows})
 
 
