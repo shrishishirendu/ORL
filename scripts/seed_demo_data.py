@@ -1,14 +1,15 @@
-"""Seed a small, complete demo dataset for the ops dashboard (Part 2 of the
+"""Seed a full, lively demo dataset for the ops dashboard (Part 2 of the
 "ops/admin web dashboard" task).
 
-Creates: 3 sites (one per region), 5 workers (varied skills/regions/home
-sites), a week of shifts mixing single-site and multi-stop (each matching
-its workers' region), `AwardCostMatrix` rows making the right workers
-eligible with sensible pay costs, `Job` rows for the multi-stop shifts, and
-`TravelMatrixEntry` rows covering every site pair used (including each
-worker's home site, in both directions) -- enough for a real Tier 1
-(`POST /rostering/solve`) and Tier 2 (`POST /dispatch/solve`) solve to
-actually run against this data end to end.
+Creates: 3 sites (one per region), 15 workers (varied skills/regions/home
+sites, 5 per region), three weeks of shifts mixing single-site and
+multi-stop (each matching its workers' region), `AwardCostMatrix` rows
+making the right workers eligible with sensible pay costs, `Job` rows for
+the multi-stop shifts, and `TravelMatrixEntry` rows covering every site pair
+used (including each worker's home site, in both directions) -- enough for
+a real Tier 1 (`POST /rostering/solve`) and Tier 2 (`POST /dispatch/solve`)
+solve to actually run against this data end to end, and to look like a
+genuinely busy roster rather than a bare-minimum fixture.
 
 Usage (from the repo root, with `DATABASE_URL` pointing at a migrated
 Postgres -- see README.md's "Running locally"):
@@ -64,9 +65,13 @@ _TRAVEL_MINUTES = {
 }
 
 # ---------------------------------------------------------------------------
-# Workers -- varied skills/regions/home sites.
+# Workers -- varied skills/regions/home sites. Five per region so Tier 1's
+# region-eligibility filter (worker.region == shift.site.region) always has
+# real slack to choose from, and a solved roster has enough assignments to
+# look like an actual working week rather than a token example.
 # ---------------------------------------------------------------------------
 _WORKER_DEFS = [
+    # --- north (home NTH-01) ---
     {
         "name": "Alice Nguyen",
         "skills": ["nursing", "first_aid"],
@@ -82,18 +87,33 @@ _WORKER_DEFS = [
         "hourly_rate": 42.0,
     },
     {
+        "name": "Priya Sharma",
+        "skills": ["nursing", "driving"],
+        "region": "north",
+        "home_site_code": "NTH-01",
+        "hourly_rate": 47.0,
+    },
+    {
+        "name": "Liam O'Connor",
+        "skills": ["cleaning", "driving"],
+        "region": "north",
+        "home_site_code": "NTH-01",
+        "hourly_rate": 39.0,
+    },
+    {
+        "name": "Noah Williams",
+        "skills": ["first_aid", "cleaning"],
+        "region": "north",
+        "home_site_code": "NTH-01",
+        "hourly_rate": 41.0,
+    },
+    # --- south (home STH-01) ---
+    {
         "name": "Carla Diaz",
         "skills": ["cleaning", "nursing"],
         "region": "south",
         "home_site_code": "STH-01",
         "hourly_rate": 38.0,
-    },
-    {
-        "name": "Dev Kapoor",
-        "skills": ["driving", "cleaning"],
-        "region": "central",
-        "home_site_code": "CBD-01",
-        "hourly_rate": 50.0,
     },
     {
         "name": "Ella Osei",
@@ -102,103 +122,179 @@ _WORKER_DEFS = [
         "home_site_code": "STH-01",
         "hourly_rate": 40.0,
     },
+    {
+        "name": "Mia Thompson",
+        "skills": ["nursing", "first_aid"],
+        "region": "south",
+        "home_site_code": "STH-01",
+        "hourly_rate": 44.0,
+    },
+    {
+        "name": "Jack Wilson",
+        "skills": ["cleaning", "driving"],
+        "region": "south",
+        "home_site_code": "STH-01",
+        "hourly_rate": 37.0,
+    },
+    {
+        "name": "Zara Ahmed",
+        "skills": ["first_aid", "nursing"],
+        "region": "south",
+        "home_site_code": "STH-01",
+        "hourly_rate": 43.0,
+    },
+    # --- central (home CBD-01) ---
+    {
+        "name": "Dev Kapoor",
+        "skills": ["driving", "cleaning"],
+        "region": "central",
+        "home_site_code": "CBD-01",
+        "hourly_rate": 50.0,
+    },
+    {
+        "name": "Sophie Chen",
+        "skills": ["nursing", "first_aid"],
+        "region": "central",
+        "home_site_code": "CBD-01",
+        "hourly_rate": 46.0,
+    },
+    {
+        "name": "Ryan Murphy",
+        "skills": ["driving"],
+        "region": "central",
+        "home_site_code": "CBD-01",
+        "hourly_rate": 41.0,
+    },
+    {
+        "name": "Grace Kim",
+        "skills": ["cleaning"],
+        "region": "central",
+        "home_site_code": "CBD-01",
+        "hourly_rate": 36.0,
+    },
+    {
+        "name": "Tom Anderson",
+        "skills": ["nursing", "driving"],
+        "region": "central",
+        "home_site_code": "CBD-01",
+        "hourly_rate": 48.0,
+    },
 ]
 
+_WORKERS_BY_REGION: dict[str, list[dict]] = {}
+for _w in _WORKER_DEFS:
+    _WORKERS_BY_REGION.setdefault(_w["region"], []).append(_w)
+
 # ---------------------------------------------------------------------------
-# A week of shifts. `day_offset` is relative to the seeded period's Monday.
-# `eligible_workers` names which _WORKER_DEFS["name"] entries get an
-# AwardCostMatrix row (eligible=True) for this shift -- i.e. exactly the
-# workers whose region/skills make them a real Tier 1 candidate, per
-# app/services/rostering/solver.py's eligibility filter (required_skill in
-# worker.skills, AND worker.region == shift.site.region, AND
-# AwardCostMatrix.eligible).
+# Three weeks of shifts, generated (not hand-listed) so the demo period is
+# genuinely busy rather than one token shift per day. `day_offset` is
+# relative to the seeded period's Monday. `eligible_workers` names which
+# _WORKER_DEFS["name"] entries get an AwardCostMatrix row (eligible=True)
+# for this shift -- i.e. exactly the workers whose region/skills make them a
+# real Tier 1 candidate, per app/services/rostering/solver.py's eligibility
+# filter (required_skill in worker.skills, AND worker.region ==
+# shift.site.region, AND AwardCostMatrix.eligible).
 #
 # `jobs` (only set for multi-stop shifts) is a list of
 # (site_code, window_start_time, window_end_time, duration_minutes) stops,
-# each on the shift's own `date`.
+# each on the shift's own `date`. A job's site does not have to match the
+# shift's own site -- Tier 2 routes from the worker's home, through the job
+# list, and back home (see app/services/dispatch/solver.py), and the demo
+# travel matrix below covers every pair of the three sites -- so stops are
+# deliberately sent to the *other* two sites to exercise real multi-site
+# routing.
 # ---------------------------------------------------------------------------
-_SHIFT_DEFS = [
-    {
-        "day_offset": 0,  # Monday
-        "site_code": "NTH-01",
-        "start_time": time(8, 0),
-        "end_time": time(16, 0),
-        "required_skill": "nursing",
-        "is_multi_stop": False,
-        "eligible_workers": ["Alice Nguyen", "Ben Carter"],
-    },
-    {
-        "day_offset": 1,  # Tuesday
-        "site_code": "NTH-01",
-        "start_time": time(8, 0),
-        "end_time": time(16, 0),
-        "required_skill": "nursing",
-        "is_multi_stop": True,
-        "eligible_workers": ["Alice Nguyen", "Ben Carter"],
-        "jobs": [
-            ("NTH-01", time(8, 30), time(10, 0), 60),
-            ("CBD-01", time(11, 0), time(13, 0), 60),
-        ],
-    },
-    {
-        "day_offset": 2,  # Wednesday
-        "site_code": "STH-01",
-        "start_time": time(9, 0),
-        "end_time": time(17, 0),
-        "required_skill": "cleaning",
-        "is_multi_stop": False,
-        "eligible_workers": ["Carla Diaz"],
-    },
-    {
-        "day_offset": 3,  # Thursday
-        "site_code": "STH-01",
-        "start_time": time(8, 0),
-        "end_time": time(16, 0),
-        "required_skill": "nursing",
-        "is_multi_stop": True,
-        "eligible_workers": ["Carla Diaz", "Ella Osei"],
-        "jobs": [
-            ("STH-01", time(8, 30), time(10, 0), 60),
-            ("NTH-01", time(11, 30), time(13, 0), 60),
-        ],
-    },
-    {
-        "day_offset": 4,  # Friday
-        "site_code": "CBD-01",
-        "start_time": time(7, 0),
-        "end_time": time(15, 0),
-        "required_skill": "driving",
-        "is_multi_stop": False,
-        "eligible_workers": ["Dev Kapoor"],
-    },
-    {
-        "day_offset": 5,  # Saturday
-        "site_code": "CBD-01",
-        "start_time": time(8, 0),
-        "end_time": time(14, 0),
-        "required_skill": "cleaning",
-        "is_multi_stop": True,
-        "eligible_workers": ["Dev Kapoor"],
-        "jobs": [
-            ("CBD-01", time(8, 30), time(9, 30), 60),
-            ("STH-01", time(10, 30), time(11, 30), 60),
-        ],
-    },
-    {
-        "day_offset": 6,  # Sunday
-        "site_code": "NTH-01",
-        "start_time": time(8, 0),
-        "end_time": time(16, 0),
-        "required_skill": "first_aid",
-        "is_multi_stop": False,
-        "eligible_workers": ["Alice Nguyen"],
-    },
-]
+_NUM_DEMO_DAYS = 21
+_REGION_SITE_CODE = {"north": "NTH-01", "south": "STH-01", "central": "CBD-01"}
+_REGIONS = ["north", "south", "central"]
+_SKILL_CYCLE = ["nursing", "cleaning", "driving", "first_aid"]
 
-# A generous weekly cap, well above any single shift's hours in this demo --
-# see _WORKER_DEFS/_SHIFT_DEFS above; not meant to bind, just to demonstrate
-# a populated AwardCostMatrix.max_hours.
-_MAX_HOURS_PER_WEEK = 40.0
+
+def _eligible_for_skill(region: str, skill: str) -> list[str]:
+    return [w["name"] for w in _WORKERS_BY_REGION[region] if skill in w["skills"]]
+
+
+def _build_shift_defs(num_days: int = _NUM_DEMO_DAYS) -> list[dict]:
+    """Deterministically generate a multi-week shift roster demand.
+
+    Every site gets (almost) daily day shifts across the period, most
+    regions also get periodic evening shifts, and roughly a third of shifts
+    are multi-stop -- enough volume and variety for a solved roster and a
+    solved route to both look like a real operation rather than a fixture.
+    """
+    shift_defs: list[dict] = []
+    shift_counter = 0
+    for day_offset in range(num_days):
+        for region_idx, region in enumerate(_REGIONS):
+            site_code = _REGION_SITE_CODE[region]
+
+            # Skip roughly one day in seven per region -- a rostered quiet
+            # day for that site, so the period isn't perfectly uniform.
+            if (day_offset + region_idx) % 7 == 6:
+                continue
+
+            primary_skill = _SKILL_CYCLE[(day_offset + region_idx) % len(_SKILL_CYCLE)]
+            primary_eligible = _eligible_for_skill(region, primary_skill)
+            if not primary_eligible:
+                continue
+
+            is_multi_stop = shift_counter % 3 == 0
+            shift_def = {
+                "day_offset": day_offset,
+                "site_code": site_code,
+                "start_time": time(8, 0),
+                "end_time": time(16, 0),
+                "required_skill": primary_skill,
+                "is_multi_stop": is_multi_stop,
+                "eligible_workers": primary_eligible,
+            }
+            if is_multi_stop:
+                other_sites = [c for c in _REGION_SITE_CODE.values() if c != site_code]
+                stop_a, stop_b = other_sites[0], other_sites[1]
+                if shift_counter % 2:
+                    stop_a, stop_b = stop_b, stop_a
+                shift_def["jobs"] = [
+                    (stop_a, time(9, 0), time(10, 30), 60),
+                    (stop_b, time(12, 0), time(13, 30), 60),
+                ]
+            shift_defs.append(shift_def)
+            shift_counter += 1
+
+            # A periodic second, evening shift at this site with a
+            # different required skill -- busier days without every site
+            # running two shifts every single day.
+            if (day_offset // 3 + region_idx) % 3 == 0:
+                evening_skill = _SKILL_CYCLE[(day_offset + region_idx + 2) % len(_SKILL_CYCLE)]
+                evening_eligible = _eligible_for_skill(region, evening_skill)
+                if evening_eligible:
+                    shift_defs.append(
+                        {
+                            "day_offset": day_offset,
+                            "site_code": site_code,
+                            "start_time": time(16, 0),
+                            "end_time": time(22, 0),
+                            "required_skill": evening_skill,
+                            "is_multi_stop": False,
+                            "eligible_workers": evening_eligible,
+                        }
+                    )
+                    shift_counter += 1
+
+    return shift_defs
+
+
+_SHIFT_DEFS = _build_shift_defs()
+
+# A generous cap, well above what any worker would actually be assigned in
+# this demo -- see _WORKER_DEFS/_SHIFT_DEFS above; not meant to bind, just to
+# demonstrate a populated AwardCostMatrix.max_hours. IMPORTANT: Tier 1
+# enforces max_hours over the *entire* rostering period passed to
+# `POST /rostering/solve`, not per calendar week (see
+# app/services/rostering/solver.py's module docstring, point 1) -- so this
+# must scale with `_NUM_DEMO_DAYS`, not stay a flat "weekly" figure, or a
+# multi-week demo period silently turns this into a real (and quickly
+# violated) constraint instead of a non-binding one.
+_MAX_HOURS_CAP = 40.0 * (_NUM_DEMO_DAYS / 7)
 
 
 def _next_monday(today: date) -> date:
@@ -318,16 +414,16 @@ async def seed(session: AsyncSession) -> None:
                     pay_cost=pay_cost,
                     eligible=True,
                     min_hours=None,
-                    max_hours=_MAX_HOURS_PER_WEEK,
+                    max_hours=_MAX_HOURS_CAP,
                 )
             )
             award_row_count += 1
 
+    period_end = period_start + timedelta(days=_NUM_DEMO_DAYS - 1)
     await session.flush()
     print(
-        f"Created {shift_count} shifts ({period_start} .. "
-        f"{period_start + timedelta(days=6)}), {job_count} jobs, "
-        f"{award_row_count} AwardCostMatrix rows"
+        f"Created {shift_count} shifts ({period_start} .. {period_end}), "
+        f"{job_count} jobs, {award_row_count} AwardCostMatrix rows"
     )
 
     await session.commit()
@@ -336,7 +432,7 @@ async def seed(session: AsyncSession) -> None:
         f"Try: curl -X POST http://localhost:8000/rostering/solve "
         f'-H "Content-Type: application/json" '
         f'-d \'{{"period_start": "{period_start}", '
-        f'"period_end": "{period_start + timedelta(days=6)}"}}\''
+        f'"period_end": "{period_end}"}}\''
     )
 
 
