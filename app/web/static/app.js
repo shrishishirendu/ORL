@@ -359,6 +359,38 @@ document.getElementById("route-picker-form").addEventListener("submit", (e) => {
   if (id) loadRoute(Number(id));
 });
 
+document.getElementById("route-solve-btn").addEventListener("click", () => {
+  const id = document.getElementById("route-assignment-id").value;
+  if (id) solveRoute(Number(id));
+});
+
+/**
+ * POST /dispatch/solve for a roster assignment (Tier 2), poll it to
+ * completion, then reload the route view -- the same
+ * enqueue-then-poll-then-refresh pattern as the Dashboard's "Solve Roster"
+ * button (see pollJob above), just targeting a single assignment instead of
+ * a whole period.
+ */
+async function solveRoute(assignmentId) {
+  clearGlobalError();
+  const btn = document.getElementById("route-solve-btn");
+  const statusEl = document.getElementById("route-solve-status");
+  btn.disabled = true;
+  statusEl.textContent = "Enqueuing dispatch solve…";
+  try {
+    const enqueued = await apiPost("/dispatch/solve", { roster_assignment_id: assignmentId });
+    statusEl.textContent = `Job ${enqueued.job_id} queued -- waiting for the arq worker…`;
+    const finalStatus = await pollJob("/dispatch/jobs", enqueued.job_id);
+    statusEl.textContent = `Job ${enqueued.job_id}: ${finalStatus.status}`;
+    await loadRoute(assignmentId);
+  } catch (err) {
+    statusEl.textContent = "";
+    showGlobalError(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function loadRoute(assignmentId) {
   clearGlobalError();
   const content = document.getElementById("route-content");
@@ -417,7 +449,22 @@ async function loadRoute(assignmentId) {
     }
   } catch (err) {
     if (err.status === 404) {
-      content.innerHTML = `<p class="muted">${err.message}</p>`;
+      content.innerHTML = "";
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = err.message;
+      content.appendChild(p);
+      // Not dispatched yet is the expected, common case for a freshly
+      // solved roster (Tier 1 assigns workers to shifts; Tier 2 routing is
+      // a separate, per-assignment step) -- surface the fix right here
+      // instead of making the person go back to the form's button.
+      if (/has not been dispatched yet/i.test(err.message)) {
+        const solveBtn = document.createElement("button");
+        solveBtn.className = "primary";
+        solveBtn.textContent = "Solve Route (Tier 2) now";
+        solveBtn.addEventListener("click", () => solveRoute(assignmentId));
+        content.appendChild(solveBtn);
+      }
     } else {
       content.innerHTML = "";
       showGlobalError(err.message);
