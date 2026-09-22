@@ -20,6 +20,9 @@ WORKDIR /app
 
 COPY --from=builder /install /usr/local
 COPY app ./app
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic
+COPY scripts ./scripts
 
 ENV PYTHONUNBUFFERED=1
 
