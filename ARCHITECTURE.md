@@ -18,6 +18,17 @@ ORL never computes pay itself, never re-derives award rules, and never mutates t
 Any correction to pay or eligibility logic belongs upstream, in the Award Interpretation
 Engine — not in ORL.
 
+**Status: planned integration, not a permanent external system.** The Award Interpretation
+Engine and ORL are meant to become one integrated product; "external system" above describes
+today's repo boundary, not the target architecture. A separate Award Interpretation repo is
+expected to be shared and folded into this system. When that happens, `AwardCostMatrix` stays
+the seam: its shape (`worker × day × shift → { pay_cost, eligible, min_hours, max_hours }`) and
+Tier 1's consume-only relationship to it should not change, whatever changes underneath —
+whether the Award Interpretation Engine ends up populating this table via an in-process call,
+an adapter/ETL step, or something else. That keeps the integration a matter of *how the table
+gets filled* rather than a rewrite of Tier 1's solver contract. Revisit this note once the
+Award Interpretation repo is available and its own architecture is known.
+
 ## Tier 1 — Rostering (batch)
 
 - **Tempo**: batch, weekly or fortnightly.
