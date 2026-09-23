@@ -6,7 +6,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import dispatch, events, health, rostering, rosters, routes, shifts, workers
+from app.api import (
+    admin_data,
+    dispatch,
+    events,
+    health,
+    rostering,
+    rosters,
+    routes,
+    shifts,
+    sites,
+    workers,
+)
 
 app = FastAPI(title="ORL", description="Operational Resource Logistics")
 
@@ -28,6 +39,8 @@ app.include_router(workers.router)
 app.include_router(shifts.router)
 app.include_router(rosters.router)
 app.include_router(routes.router)
+app.include_router(sites.router)
+app.include_router(admin_data.router)
 
 # The ops/admin dashboard: a static (no-build-step) HTML/CSS/JS app that
 # talks to the JSON API above via same-origin fetch() calls. Mounted at

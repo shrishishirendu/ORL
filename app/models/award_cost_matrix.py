@@ -44,6 +44,32 @@ class AwardCostMatrix(Base):
     means this table's shape matches the external engine's contract
     byte-for-byte rather than requiring a join through ``Shift`` to recover
     a column the boundary artifact defines explicitly.
+
+    ``is_placeholder`` is ORL-side **provenance bookkeeping**, added for the
+    admin data-entry feature (see ``app/services/admin_data/eligibility.py``)
+    -- it does **not** change the boundary described above or in
+    ARCHITECTURE.md's "AwardCostMatrix boundary" section. This table is
+    still consumed-only by Tier 1 and still, in the target architecture,
+    owned/populated by the external Award Interpretation Engine. The
+    problem this column bridges is narrower and ORL-local: the admin
+    data-entry feature lets an admin add a ``Worker``/``Shift`` through this
+    repo directly (not through the Award Interpretation Engine), and a
+    freshly added pair has no real award-interpreted pay/eligibility data
+    yet -- without *something* in this table, Tier 1 would simply never be
+    able to roster them, which would make the admin feature a dead end for
+    a demo/MVP. Rather than silently leaving that gap or expanding scope
+    into a full Award Cost Matrix editor (both explicitly out of scope),
+    ORL auto-generates a clearly-flagged stopgap row (``eligible=True``,
+    ``pay_cost`` computed from ``Settings.placeholder_hourly_rate``, see
+    that module) whenever a matching worker/shift pair has none. This
+    column is exactly what lets ORL tell such a row apart from a real one
+    later (e.g. once the Award Interpretation Engine actually ingests and
+    overwrites it, or for an admin auditing "are these numbers real").
+    ``default=False``/``server_default="false"`` means every row this repo's
+    own ``scripts/seed_demo_data.py`` writes -- deliberately-authored demo
+    pay data, not a gap-filling stopgap -- stays ``is_placeholder=False``
+    unchanged, and any pre-existing row from before this column existed
+    reads as ``False`` (real) rather than silently becoming a placeholder.
     """
 
     __tablename__ = "award_cost_matrix"
@@ -59,6 +85,9 @@ class AwardCostMatrix(Base):
     eligible: Mapped[bool] = mapped_column(Boolean)
     min_hours: Mapped[float | None] = mapped_column(Numeric(5, 2), default=None)
     max_hours: Mapped[float | None] = mapped_column(Numeric(5, 2), default=None)
+    is_placeholder: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
 
     worker: Mapped[Worker] = relationship(back_populates="award_cost_rows")  # noqa: F821
     shift: Mapped[Shift] = relationship(back_populates="award_cost_rows")  # noqa: F821
@@ -67,5 +96,6 @@ class AwardCostMatrix(Base):
         return (
             f"AwardCostMatrix(id={self.id!r}, worker_id={self.worker_id!r}, "
             f"day={self.day!r}, shift_id={self.shift_id!r}, "
-            f"pay_cost={self.pay_cost!r}, eligible={self.eligible!r})"
+            f"pay_cost={self.pay_cost!r}, eligible={self.eligible!r}, "
+            f"is_placeholder={self.is_placeholder!r})"
         )

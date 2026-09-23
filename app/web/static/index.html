@@ -14,6 +14,7 @@
     <button data-view="rosters">Rosters</button>
     <button data-view="route">Route</button>
     <button data-view="events">Events</button>
+    <button data-view="manage">Manage</button>
   </nav>
 </header>
 
@@ -190,6 +191,160 @@
       </form>
       <div class="muted" id="event-submit-status"></div>
       <div class="result-box hidden" id="event-submit-result"></div>
+    </div>
+  </section>
+
+  <!-- ============================== Manage ================================ -->
+  <section class="view" id="view-manage">
+    <div class="panel">
+      <h2>Bulk upload</h2>
+      <p class="muted">
+        Upload Workers and/or Shifts from a combined <code>.xlsx</code> (a
+        "Workers" sheet and/or a "Shifts" sheet) or separate CSV files.
+        <a href="/admin/data/template" id="upload-template-link">Download template</a>.
+        Preview (dry run) before committing -- a preview validates and
+        summarizes without saving anything.
+      </p>
+      <form class="inline-form" id="upload-form">
+        <div class="field">
+          <label for="upload-combined-file">Combined .xlsx</label>
+          <input type="file" id="upload-combined-file" accept=".xlsx" />
+        </div>
+        <div class="field">
+          <label for="upload-workers-csv">Workers CSV</label>
+          <input type="file" id="upload-workers-csv" accept=".csv" />
+        </div>
+        <div class="field">
+          <label for="upload-shifts-csv">Shifts CSV</label>
+          <input type="file" id="upload-shifts-csv" accept=".csv" />
+        </div>
+        <div class="field">
+          <label for="upload-period-start">Period start (optional)</label>
+          <input type="date" id="upload-period-start" />
+        </div>
+        <div class="field">
+          <label for="upload-period-end">Period end (optional)</label>
+          <input type="date" id="upload-period-end" />
+        </div>
+      </form>
+      <div class="inline-form">
+        <button type="button" class="primary" id="upload-preview-btn">Preview (dry run)</button>
+        <button type="button" class="primary" id="upload-commit-btn">Upload</button>
+      </div>
+      <div class="muted" id="upload-status"></div>
+      <div class="result-box hidden" id="upload-result"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Workers</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Skills</th>
+              <th>Region</th>
+              <th>Home site</th>
+              <th>Employee code</th>
+              <th>Active</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="manage-workers-body">
+            <tr><td colspan="8" class="muted">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="worker-form-title">Add worker</h3>
+      <form class="inline-form" id="worker-form">
+        <input type="hidden" id="worker-form-id" />
+        <div class="field">
+          <label for="worker-form-name">Name</label>
+          <input type="text" id="worker-form-name" required />
+        </div>
+        <div class="field">
+          <label for="worker-form-skills">Skills (comma-separated)</label>
+          <input type="text" id="worker-form-skills" required placeholder="nursing, first_aid" />
+        </div>
+        <div class="field">
+          <label for="worker-form-region">Region</label>
+          <input type="text" id="worker-form-region" />
+        </div>
+        <div class="field">
+          <label for="worker-form-home-site">Home site</label>
+          <select id="worker-form-home-site" required></select>
+        </div>
+        <div class="field">
+          <label for="worker-form-employee-code">Employee code</label>
+          <input type="text" id="worker-form-employee-code" placeholder="optional" />
+        </div>
+        <div class="field">
+          <label for="worker-form-active">Active</label>
+          <select id="worker-form-active">
+            <option value="true">true</option>
+            <option value="false">false</option>
+          </select>
+        </div>
+        <button type="submit" class="primary" id="worker-form-submit-btn">Add worker</button>
+        <button type="button" class="link hidden" id="worker-form-cancel-btn">Cancel edit</button>
+      </form>
+      <div class="muted" id="worker-form-status"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Shifts</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Required skill</th>
+              <th>Site / Region</th>
+              <th>Multi-stop</th>
+              <th>Eligibility</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="manage-shifts-body">
+            <tr><td colspan="8" class="muted">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="shift-form-title">Add shift</h3>
+      <p class="muted">
+        Single-site shifts only -- multi-stop shifts need Job rows, which
+        this form doesn't manage (see the existing seed/DB path for those).
+      </p>
+      <form class="inline-form" id="shift-form">
+        <input type="hidden" id="shift-form-id" />
+        <div class="field">
+          <label for="shift-form-date">Date</label>
+          <input type="date" id="shift-form-date" required />
+        </div>
+        <div class="field">
+          <label for="shift-form-start">Start time</label>
+          <input type="time" id="shift-form-start" required />
+        </div>
+        <div class="field">
+          <label for="shift-form-end">End time</label>
+          <input type="time" id="shift-form-end" required />
+        </div>
+        <div class="field">
+          <label for="shift-form-skill">Required skill</label>
+          <input type="text" id="shift-form-skill" required />
+        </div>
+        <div class="field">
+          <label for="shift-form-site">Site</label>
+          <select id="shift-form-site" required></select>
+        </div>
+        <button type="submit" class="primary" id="shift-form-submit-btn">Add shift</button>
+        <button type="button" class="link hidden" id="shift-form-cancel-btn">Cancel edit</button>
+      </form>
+      <div class="muted" id="shift-form-status"></div>
+      <div class="result-box hidden" id="shift-form-result"></div>
     </div>
   </section>
 </main>

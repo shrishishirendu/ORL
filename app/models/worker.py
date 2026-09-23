@@ -43,6 +43,20 @@ class Worker(Base):
     fallback/override for eligibility when a caller doesn't want to resolve
     it via the FK join (see the rostering solver's docstring for how the two
     interact).
+
+    ``employee_code`` is a nullable, unique, indexed natural key -- added
+    for the admin data-entry/bulk-upload feature (see
+    ``app/services/admin_data/``), mirroring ``Site.code``'s existing
+    pattern. It exists purely so a bulk Workers upload has something stable
+    to upsert/replace against across repeated uploads: matching a row to an
+    existing ``Worker`` by name alone is ambiguous (names collide, get
+    retyped slightly differently) and offers no continuity if a worker is
+    renamed between uploads. It stays optional (unlike ``Site.code``)
+    because not every admin-entry workflow has an external employee-code
+    system to key off of -- when absent, upload matching falls back to an
+    exact case-insensitive ``name`` match instead (see
+    ``app/services/admin_data/workers.py``, which flags that fallback as
+    less reliable in its response).
     """
 
     __tablename__ = "worker"
@@ -53,6 +67,9 @@ class Worker(Base):
     region: Mapped[str | None] = mapped_column(String(100), index=True, default=None)
     home_site_id: Mapped[int] = mapped_column(ForeignKey("site.id"), index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    employee_code: Mapped[str | None] = mapped_column(
+        String(64), unique=True, index=True, default=None
+    )
 
     home_site: Mapped[Site] = relationship(  # noqa: F821
         back_populates="workers_home_here"

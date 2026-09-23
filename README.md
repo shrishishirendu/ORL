@@ -116,7 +116,10 @@ app/
     rostering/          Tier 1 — batch rostering (OR-Tools CP-SAT)
     dispatch/           Tier 2 — per-shift dispatch/routing (OR-Tools Routing / VRPTW)
     reoptimization/     Tier 3 — event-driven intra-day re-optimization
+    admin_data/         Admin data-entry: Worker/Shift manual entry + bulk upload,
+                         plus the placeholder AwardCostMatrix bridge (see ARCHITECTURE.md)
   workers/              Async task queue workers (arq)
+  web/static/           Static (no-build-step) admin dashboard, served at /admin/
   main.py               FastAPI app entrypoint
 alembic/                Database migrations (see "Database migrations" above)
 tests/                  Test suite (tests/integration/ needs live Postgres/Redis)
