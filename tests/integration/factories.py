@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.award_cost_matrix import AwardCostMatrix
 from app.models.enums import (
+    EmploymentType,
     ReoptimizationEventType,
     ReoptimizationResolution,
     ReoptimizationStatus,
@@ -45,6 +46,9 @@ async def make_worker(
     skills: list[str] | None = None,
     region: str | None = None,
     active: bool = True,
+    award_code: str | None = None,
+    classification_level: str | None = None,
+    employment_type: EmploymentType | None = None,
 ) -> Worker:
     worker = Worker(
         name=name,
@@ -52,6 +56,9 @@ async def make_worker(
         region=region,
         home_site_id=home_site.id,
         active=active,
+        award_code=award_code,
+        classification_level=classification_level,
+        employment_type=employment_type,
     )
     session.add(worker)
     await session.flush()
@@ -111,6 +118,7 @@ async def make_award_row(
     eligible: bool = True,
     min_hours: float | None = None,
     max_hours: float | None = None,
+    is_placeholder: bool = False,
 ) -> AwardCostMatrix:
     row = AwardCostMatrix(
         worker_id=worker.id,
@@ -120,6 +128,7 @@ async def make_award_row(
         eligible=eligible,
         min_hours=min_hours,
         max_hours=max_hours,
+        is_placeholder=is_placeholder,
     )
     session.add(row)
     await session.flush()

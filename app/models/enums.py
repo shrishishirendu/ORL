@@ -89,3 +89,52 @@ class ReoptimizationStatus(enum.StrEnum):
     RESOLVING = "resolving"
     RESOLVED = "resolved"
     ESCALATED = "escalated"
+
+
+class EmploymentType(enum.StrEnum):
+    """A worker's employment basis, as the Award Engine service's contract
+    spells it (``docs/AWARD_ENGINE_CONTRACT.md``, "Worker" shape:
+    ``full_time|part_time|casual``).
+
+    ORL only *stores* this and passes it through to the engine -- it never
+    applies any award rule keyed on it (casual loading, part-time agreed
+    hours, ...); that interpretation lives entirely in the engine, per
+    ARCHITECTURE.md's "AwardCostMatrix boundary".
+    """
+
+    FULL_TIME = "full_time"
+    PART_TIME = "part_time"
+    CASUAL = "casual"
+
+
+class RosterCostStatus(enum.StrEnum):
+    """Where a solved ``Roster``'s reported cost came from -- the result of
+    post-solve reconciliation against the Award Engine service (see
+    ``app/services/award_engine/reconcile.py``, which is the only writer).
+
+    - ``engine_exact``: the engine priced the whole solved roster;
+      ``Roster.engine_total_cost`` is the exact full-period figure.
+    - ``engine_unresolved``: the engine was reached but could not price at
+      least one worker (``total_cost: null`` in its response), so there is
+      no exact figure -- only the solver estimate.
+    - ``engine_unavailable``: the engine is configured but could not be
+      reached (network error, timeout, 5xx).
+    - ``engine_rejected``: the engine answered 422 -- ORL sent data it
+      considers invalid (e.g. an unknown classification level key). Kept
+      apart from ``engine_unavailable`` because the fix is in ORL's worker
+      data, not in the engine's uptime.
+    - ``placeholder_estimate``: the roster was (at least partly) costed off
+      placeholder ``AwardCostMatrix`` rows, or assigns workers that have no
+      award fields and so cannot be engine-priced. The only cost on offer
+      is the solver estimate, flagged as such.
+
+    ``NULL`` on the column means "no reconciliation happened": the engine is
+    not configured and no placeholder rows were involved, the roster
+    failed, or it predates this column.
+    """
+
+    ENGINE_EXACT = "engine_exact"
+    ENGINE_UNRESOLVED = "engine_unresolved"
+    ENGINE_UNAVAILABLE = "engine_unavailable"
+    ENGINE_REJECTED = "engine_rejected"
+    PLACEHOLDER_ESTIMATE = "placeholder_estimate"

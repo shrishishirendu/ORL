@@ -98,9 +98,11 @@ Every other rate, level or clause is shown as `[rate]`, `[amount]`, `cl. [ref]` 
 engine supplies it. Planned pay costs come from ORL's `AwardCostMatrix` (rate × hours). Never
 invent award figures in UI, fixtures or copy.
 
-**Open decision:** the preloaded award (Security Services) doesn't fit the demo workforce
-(nursing / cleaning / driving). The candidates are SCHADS, Cleaning Services, or leaving workers
-"not yet mapped". This is waiting on the product owner.
+**Decided 2026-09-25:** the demo is scoped to **MA000016 Security Services (NSW)**, the
+best-verified award in the engine. The demo workforce is being re-themed to security officers
+(static guarding, mobile patrol, crowd control, first aid, CCTV), and mobile patrol runs are the
+Tier 2 multi-stop routes. The wireframes still show the earlier nursing/cleaning demo data, so they
+need a data refresh to match.
 
 ## Backend gaps the wireframes rely on ("Needs API" tags on the canvas)
 
@@ -118,7 +120,7 @@ ARCHITECTURE.md).
 
 ## Next steps
 
-1. Owner decides the award pack question above.
+1. ~~Owner decides the award pack~~ → Security (MA000016) chosen; integration build in progress (see AWARD_INTEGRATION.md).
 2. Optionally a visual QA pass on the canvas (screens were checked for data and markup, not rendered).
 3. Rebuild `app/web/static/` to the wireframes, starting with screens that work on today's API
    (Command Centre, Roster Planner, Solve & Coverage, Dispatch Board, Route Detail, Disruptions,

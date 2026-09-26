@@ -13,9 +13,11 @@ Every model module is imported here so that:
 from app.models.award_cost_matrix import AwardCostMatrix
 from app.models.base import Base
 from app.models.enums import (
+    EmploymentType,
     ReoptimizationEventType,
     ReoptimizationResolution,
     ReoptimizationStatus,
+    RosterCostStatus,
     RosterStatus,
     RouteStatus,
 )
@@ -32,6 +34,7 @@ from app.models.worker import Worker
 __all__ = [
     "AwardCostMatrix",
     "Base",
+    "EmploymentType",
     "Job",
     "ReoptimizationEvent",
     "ReoptimizationEventType",
@@ -39,6 +42,7 @@ __all__ = [
     "ReoptimizationStatus",
     "Roster",
     "RosterAssignment",
+    "RosterCostStatus",
     "RosterStatus",
     "Route",
     "RouteStatus",

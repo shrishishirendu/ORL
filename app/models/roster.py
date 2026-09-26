@@ -10,12 +10,23 @@ from __future__ import annotations
 
 from datetime import date as date_
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, Index, Numeric, Text, UniqueConstraint
+from sqlalchemy import (
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
-from app.models.enums import RosterStatus
+from app.models.enums import RosterCostStatus, RosterStatus
 
 
 class Roster(Base):
@@ -31,6 +42,20 @@ class Roster(Base):
     populates it). Free text rather than a structured/JSONB column since
     ``RosterSolution.diagnostics`` is already a list of human-readable
     strings with no further structure to preserve.
+
+    **Cost reconciliation columns.** ``total_cost`` stays what it always
+    was: Tier 1's *solver estimate*, the sum of the ``AwardCostMatrix``
+    ``pay_cost`` values the objective minimised (a linear approximation --
+    see docs/AWARD_INTEGRATION.md, "cost depends on the whole week").
+    ``engine_total_cost`` / ``engine_commit`` hold the Award Engine
+    service's exact full-period figure for the solved roster
+    (``POST /engine/price-roster``) and the engine commit that produced it;
+    ``cost_status`` (``RosterCostStatus``) says which of the two is the
+    trustworthy number and why, and ``cost_detail`` carries the
+    human-readable reason (unresolved workers, the engine error, which
+    workers lack award fields). All four are written only by
+    ``app/services/award_engine/reconcile.py``, after the roster itself has
+    been committed, so a reconciliation failure can never fail a solve.
     """
 
     __tablename__ = "roster"
@@ -47,6 +72,12 @@ class Roster(Base):
     )
     total_cost: Mapped[float | None] = mapped_column(Numeric(12, 2), default=None)
     failure_reason: Mapped[str | None] = mapped_column(Text, default=None)
+    engine_total_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), default=None)
+    engine_commit: Mapped[str | None] = mapped_column(String(64), default=None)
+    cost_status: Mapped[RosterCostStatus | None] = mapped_column(
+        Enum(RosterCostStatus, name="roster_cost_status"), default=None
+    )
+    cost_detail: Mapped[str | None] = mapped_column(Text, default=None)
 
     assignments: Mapped[list[RosterAssignment]] = relationship(
         back_populates="roster", cascade="all, delete-orphan"

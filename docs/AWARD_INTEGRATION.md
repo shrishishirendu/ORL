@@ -1,6 +1,6 @@
 # Award Intelligence ↔ ORL integration: assessment and proposed plan
 
-Status: **proposal, 2026-09-25. Not started, and it needs the owner decisions below.** Based on a
+Status: **in progress on branch `feature/award-integration`** (2026-09-25). Demo scoped to MA000016 Security (NSW). The engine service is built and tested; see [AWARD_ENGINE_CONTRACT.md](AWARD_ENGINE_CONTRACT.md). Based on a
 read-only review of `C:\dev\award-intelligence` (origin `github.com/shreeyanshujha/award-intelligence`,
 3 commits, head `ba3aaee`). Respects the agent boundary in [UI_REDESIGN.md](UI_REDESIGN.md) and the
 `AwardCostMatrix` seam in [ARCHITECTURE.md](../ARCHITECTURE.md).
@@ -91,6 +91,31 @@ ORL (Python/FastAPI)                           Award Engine service (Node)
 | 5 | Performance: 2 engine runs per matrix cell, no memoisation | Engineering | Memoise baselines in the wrapper and batch per worker |
 | 6 | Security release gaps (legal employer, work type, roster cycle) return `unresolved` with no $ | Policy | Treat as `eligible=false` with the reason shown in the UI |
 | 7 | Repo hygiene: 3 commits, uncommitted `package-lock.json`, untracked zip, no Docker/CI | Minor | Clean up before pinning |
+
+## Engine findings for the engine owner (found while wrapping, 2026-09-25)
+
+These are inside the deterministic engine. Under the agent boundary they are reported, not worked
+around in ORL. The service normalises *input order* and flags the rest in `warnings`.
+
+1. **Input-order dependence.** Weekly overtime is assigned to the *last shifts in the input array*, not the
+   latest in time. The same 5-shift week priced $1,676.78 vs $1,591.52 depending on order. The service
+   sorts chronologically. The engine should do this itself.
+2. **Jurisdiction has no effect on MA000016 pay.** The security engine applies public-holiday rates only
+   when a shift carries the PH flag, and never consults the calendar. NSW gazetted holidays aren't
+   registered, and `marginalCost` and `calcRow` never pass jurisdiction. The service flags holiday shifts
+   ("cost may be understated").
+3. **Penalties use the award minimum, not the over-award rate.** A casual L3 at $31.50 on a Sunday prices
+   exactly as $29.73 × 2.25 × 7.5, so the over-award adds nothing. This may be award-correct; **owner to
+   confirm**.
+4. **Rate validity is always "unknown".** The bundled MA000016 library has no amendment date, although the
+   rule registry is versioned.
+5. **Gaps raised on ordinary shifts:** a minimum-engagement gap on every full-time shift under 7.6 h, and
+   a break-record gap on every shift of 5 h or more unless `break_recorded` is set.
+6. **Minor:**
+   - Employment type is read from the timesheet employee, not the profile.
+   - The "Ordinary time" item has no clause reference.
+   - The award-intelligence checkout is dirty: `package-lock.json` and `_claude_tmp/`. The pin check
+     reads HEAD only.
 
 ## Phased plan (after decisions 1–3)
 

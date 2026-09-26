@@ -4,7 +4,8 @@
 - **UI/UX redesign in progress:** read [docs/UI_REDESIGN.md](docs/UI_REDESIGN.md) before changing
   `app/web/static/` or discussing the UI. It links the approved wireframes and design system, and
   records the demo story, the colour rule (blue = Tier 1 batch, orange = Tiers 2–3 live) and the
-  award-data honesty rule.
+  award-data honesty rule. [docs/WIREFRAME_FLOW_AUDIT.md](docs/WIREFRAME_FLOW_AUDIT.md) lists
+  where the wireframes break the real process flow. Fix those before building from them.
 - **Agent boundary:** no agent computes a $ figure that feeds a payslip, and no agent performs
   the CP-SAT/VRPTW solve. The award module's calculation output is a contract to preserve: wrap
   it, don't rebuild it. Agents only work at the edges: award-rule drafting with mandatory human
