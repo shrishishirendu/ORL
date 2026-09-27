@@ -125,3 +125,18 @@ around in ORL. The service normalises *input order* and flags the rest in `warni
 3. **Post-solve reconciliation and fixed-point option.** The UI shows the exact cost and the solver estimate.
 4. **Timesheets from roster + Tier 3 actuals → deterministic pay run** via the engine.
 5. **Unified UI shell and retirement of the duplicate roster tools.**
+
+## Owner decisions, 2026-09-28 (unification)
+
+- **UI shell:** award-intelligence's React app becomes the single product UI. ORL's Plan / Dispatch /
+  Live / Workforce screens are added to it as pages that call ORL's API, styled to the approved
+  wireframes. ORL's static `/admin/` dashboard is retired once those pages reach parity.
+- **Repo access:** changes to award-intelligence are made on feature branches and raised as PRs for
+  its owner to review. This includes the engine findings above (holidays/jurisdiction,
+  `penaltyRates` in the generic path, input-order overtime). ORL still never patches around them.
+- **Data ownership:** both systems keep their own data. Employees are **synced** between ORL
+  `Worker` (keyed by `employee_code`) and the award-intelligence employee master (keyed by
+  `employeeId`). The sync must be explicit and must report conflicts, never overwrite them silently.
+- **Verified end to end (local, 2026-09-28):** security seed → `sync-matrix` (405/405 cells
+  engine-priced, 0 placeholders) → Tier 1 week 1 solved 25/25 → engine exact $8,598.90 vs solver
+  estimate $8,365.57, `cost_status=engine_exact`.
