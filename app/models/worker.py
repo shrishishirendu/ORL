@@ -7,11 +7,14 @@ RosterAssignment rows.
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, ForeignKey, String
+from decimal import Decimal
+
+from sqlalchemy import Boolean, Enum, ForeignKey, Numeric, String
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.models.enums import EmploymentType
 
 
 class Worker(Base):
@@ -57,6 +60,24 @@ class Worker(Base):
     exact case-insensitive ``name`` match instead (see
     ``app/services/admin_data/workers.py``, which flags that fallback as
     less reliable in its response).
+
+    **Award fields** (``award_code``, ``classification_level``,
+    ``employment_type``, ``over_award_rate``, ``ordinary_hours_per_week``,
+    ``agreed_ordinary_hours_per_shift``) are the per-worker facts the Award
+    Engine service needs to price this worker -- exactly the "Worker" shape
+    in ``docs/AWARD_ENGINE_CONTRACT.md``. ORL stores and forwards them; it
+    never interprets them (no rate lookup, no casual loading, no part-time
+    rule lives here -- see ARCHITECTURE.md's "AwardCostMatrix boundary").
+    All are nullable: a worker with no ``award_code`` / ``classification_level``
+    / ``employment_type`` is simply not engine-priced and keeps placeholder
+    ``AwardCostMatrix`` rows (see ``app/services/award_engine/matrix.py``'s
+    ``has_award_fields``). ``classification_level`` is the engine's own level
+    key (from ``GET /engine/awards``), not free text.
+    ``ordinary_hours_per_week`` / ``agreed_ordinary_hours_per_shift`` are
+    required by the engine for ``part_time`` workers only; ORL doesn't
+    enforce that here -- the engine rejects it with a 422, which surfaces as
+    ``RosterCostStatus.ENGINE_REJECTED`` / a sync error, rather than ORL
+    duplicating the engine's validation rules.
     """
 
     __tablename__ = "worker"
@@ -69,6 +90,17 @@ class Worker(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     employee_code: Mapped[str | None] = mapped_column(
         String(64), unique=True, index=True, default=None
+    )
+
+    award_code: Mapped[str | None] = mapped_column(String(16), default=None)
+    classification_level: Mapped[str | None] = mapped_column(String(64), default=None)
+    employment_type: Mapped[EmploymentType | None] = mapped_column(
+        Enum(EmploymentType, name="employment_type"), default=None
+    )
+    over_award_rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), default=None)
+    ordinary_hours_per_week: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), default=None)
+    agreed_ordinary_hours_per_shift: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 2), default=None
     )
 
     home_site: Mapped[Site] = relationship(  # noqa: F821

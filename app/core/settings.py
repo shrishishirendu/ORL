@@ -20,5 +20,19 @@ class Settings(BaseSettings):
     # award-interpreted rate to draw on.
     placeholder_hourly_rate: float = 40.0
 
+    # Award Engine service (engine-service/, see docs/AWARD_ENGINE_CONTRACT.md).
+    # `award_engine_url` unset (the default) means the engine is disabled:
+    # ORL keeps placeholder AwardCostMatrix rows, skips post-solve
+    # reconciliation, and flags placeholder-costed rosters as such.
+    award_engine_url: str | None = None
+    award_engine_timeout_s: float = 30.0
+    # Employer-level `context` sent with every engine request -- facts about
+    # the employer, not about any one worker. MA000016 treats a missing
+    # legal employer / work type as a release gap: the engine answers
+    # `unresolved` rather than guessing, and ORL surfaces that as-is.
+    award_jurisdiction: str = "NSW"
+    award_legal_employer: str | None = None
+    award_work_type: str | None = None
+
 
 settings = Settings()

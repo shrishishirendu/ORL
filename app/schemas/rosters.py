@@ -20,8 +20,15 @@ class RosterSummary(BaseModel):
     period_end: date_
     generated_at: datetime
     status: str
+    # `total_cost` is Tier 1's solver estimate; `engine_total_cost` is the
+    # award engine's exact figure for the solved roster, when there is one.
+    # `cost_status` says which to trust (see app.models.enums.RosterCostStatus).
     total_cost: float | None = None
     failure_reason: str | None = None
+    engine_total_cost: float | None = None
+    engine_commit: str | None = None
+    cost_status: str | None = None
+    cost_detail: str | None = None
 
 
 class RosterListResponse(BaseModel):

@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
-    "sqlalchemy>=2.0",
+    "sqlalchemy[asyncio]>=2.0",
     "asyncpg",
     "alembic",
     "pydantic-settings",
@@ -16,13 +16,14 @@ dependencies = [
     "redis",
     "openpyxl",
     "python-multipart",
+    # Award Engine service client (app/services/award_engine/client.py).
+    "httpx",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
     "pytest-asyncio",
-    "httpx",
     "ruff",
 ]
 

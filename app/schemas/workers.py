@@ -9,10 +9,27 @@ from datetime import date as date_
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.enums import EmploymentType
 from app.schemas.common import SiteSummary
 
 
-class WorkerRead(BaseModel):
+class WorkerAwardFields(BaseModel):
+    """The per-worker award fields the Award Engine service prices from
+    (see `Worker`'s docstring and docs/AWARD_ENGINE_CONTRACT.md). All
+    optional: a worker without them keeps placeholder costs. ORL stores
+    them as given -- `classification_level` is validated by the engine
+    (it must be a level key from `GET /engine/awards`), not here.
+    """
+
+    award_code: str | None = Field(default=None, max_length=16)
+    classification_level: str | None = Field(default=None, max_length=64)
+    employment_type: EmploymentType | None = None
+    over_award_rate: float | None = Field(default=None, ge=0)
+    ordinary_hours_per_week: float | None = Field(default=None, ge=0)
+    agreed_ordinary_hours_per_shift: float | None = Field(default=None, ge=0)
+
+
+class WorkerRead(WorkerAwardFields):
     """One `Worker` row for the list endpoint (and the create/update
     responses, which return the same shape)."""
 
@@ -36,7 +53,7 @@ class WorkerListResponse(BaseModel):
     offset: int
 
 
-class WorkerCreateRequest(BaseModel):
+class WorkerCreateRequest(WorkerAwardFields):
     """`POST /workers` request body. `skills` must be non-empty -- a worker
     with no skills could never be eligible for any shift (see
     app.services.rostering.solver's skill filter), so an empty list is
@@ -51,7 +68,7 @@ class WorkerCreateRequest(BaseModel):
     employee_code: str | None = None
 
 
-class WorkerUpdateRequest(BaseModel):
+class WorkerUpdateRequest(WorkerAwardFields):
     """`PATCH /workers/{id}` request body -- every field optional; an
     omitted field is left unchanged (see
     app.services.admin_data.workers.update_worker, which is driven by

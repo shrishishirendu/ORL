@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.enums import EmploymentType
 from app.models.site import Site
 from app.models.worker import Worker
 from app.services.admin_data.errors import (
@@ -39,6 +40,14 @@ class WorkerCreateData:
     home_site_id: int
     active: bool = True
     employee_code: str | None = None
+    # Award fields (see `Worker`'s docstring) -- stored as given, never
+    # interpreted here.
+    award_code: str | None = None
+    classification_level: str | None = None
+    employment_type: EmploymentType | None = None
+    over_award_rate: float | None = None
+    ordinary_hours_per_week: float | None = None
+    agreed_ordinary_hours_per_shift: float | None = None
 
 
 async def _check_employee_code_free(
@@ -72,6 +81,12 @@ async def create_worker(session: AsyncSession, data: WorkerCreateData) -> Worker
         home_site_id=data.home_site_id,
         active=data.active,
         employee_code=data.employee_code,
+        award_code=data.award_code,
+        classification_level=data.classification_level,
+        employment_type=data.employment_type,
+        over_award_rate=data.over_award_rate,
+        ordinary_hours_per_week=data.ordinary_hours_per_week,
+        agreed_ordinary_hours_per_shift=data.agreed_ordinary_hours_per_shift,
     )
     session.add(worker)
     await session.flush()
@@ -81,7 +96,7 @@ async def create_worker(session: AsyncSession, data: WorkerCreateData) -> Worker
 async def update_worker(session: AsyncSession, worker_id: int, updates: dict) -> Worker:
     """Partially update Worker ``worker_id`` with whichever of
     ``name``/``skills``/``region``/``home_site_id``/``active``/
-    ``employee_code`` keys are present in ``updates`` (built by the API
+    ``employee_code`` (or award-field) keys are present in ``updates`` (built by the API
     layer via ``payload.model_dump(exclude_unset=True)``, so an omitted
     field is genuinely left alone, not reset to a default).
     """

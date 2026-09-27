@@ -1,0 +1,15 @@
+{
+  "name": "orl-award-engine-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Thin deterministic HTTP wrapper around the award-intelligence pay engine (contract: docs/AWARD_ENGINE_CONTRACT.md).",
+  "type": "module",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {}
+}
