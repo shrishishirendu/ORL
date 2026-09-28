@@ -163,11 +163,19 @@ async def test_travel_time_between_sites_is_loaded_and_enforced(db_session) -> N
     cheap = await make_worker(db_session, site_a, name="Cheap", skills=["driver"])
     other = await make_worker(db_session, site_a, name="Other", skills=["driver"])
     morning = await make_shift(
-        db_session, site_a, date=SHIFT_DATE, start_time=time(8, 0), end_time=time(12, 0),
+        db_session,
+        site_a,
+        date=SHIFT_DATE,
+        start_time=time(8, 0),
+        end_time=time(12, 0),
         required_skill="driver",
     )
     afternoon = await make_shift(
-        db_session, site_b, date=SHIFT_DATE, start_time=time(12, 30), end_time=time(16, 30),
+        db_session,
+        site_b,
+        date=SHIFT_DATE,
+        start_time=time(12, 30),
+        end_time=time(16, 30),
         required_skill="driver",
     )
     for shift in (morning, afternoon):

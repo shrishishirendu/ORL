@@ -30,7 +30,10 @@ def shift(shift_id, start, end, site, day=DAY) -> ShiftInput:
 
 def cost(worker_id, shift_obj, pay_cost) -> AwardCostMatrixEntry:
     return AwardCostMatrixEntry(
-        worker_id=worker_id, day=shift_obj.date, shift_id=shift_obj.id, pay_cost=pay_cost,
+        worker_id=worker_id,
+        day=shift_obj.date,
+        shift_id=shift_obj.id,
+        pay_cost=pay_cost,
         eligible=True,
     )
 
@@ -56,9 +59,7 @@ def test_too_little_time_to_travel_splits_the_shifts() -> None:
     both, so the cheapest roster is worker 1 on one shift (50) and worker 2 on
     the other (80): total 130, not 100."""
     shifts, matrix = two_shift_day(SITE_A, SITE_B)
-    result = solve_roster(
-        [CHEAP, PRICEY], shifts, matrix, travel_minutes={(SITE_A, SITE_B): 45}
-    )
+    result = solve_roster([CHEAP, PRICEY], shifts, matrix, travel_minutes={(SITE_A, SITE_B): 45})
     assert result.status is SolveStatus.OPTIMAL
     assert result.total_cost == 130.0
     workers_per_shift = {shift_id: worker_id for worker_id, shift_id in assigned(result)}
@@ -69,9 +70,7 @@ def test_too_little_time_to_travel_splits_the_shifts() -> None:
 def test_a_gap_equal_to_the_travel_time_is_enough() -> None:
     """Gap 30, travel 30: worker 1 can make it, so they take both (100)."""
     shifts, matrix = two_shift_day(SITE_A, SITE_B)
-    result = solve_roster(
-        [CHEAP, PRICEY], shifts, matrix, travel_minutes={(SITE_A, SITE_B): 30}
-    )
+    result = solve_roster([CHEAP, PRICEY], shifts, matrix, travel_minutes={(SITE_A, SITE_B): 30})
     assert result.total_cost == 100.0
     assert assigned(result) == {(1, 100), (1, 101)}
 
@@ -81,7 +80,9 @@ def test_shifts_at_the_same_site_need_no_travel() -> None:
     with a long A <-> B travel time in the matrix."""
     shifts, matrix = two_shift_day(SITE_A, SITE_A)
     result = solve_roster(
-        [CHEAP, PRICEY], shifts, matrix,
+        [CHEAP, PRICEY],
+        shifts,
+        matrix,
         travel_minutes={(SITE_A, SITE_B): 90, (SITE_B, SITE_A): 90},
     )
     assert assigned(result) == {(1, 100), (1, 101)}
@@ -93,7 +94,9 @@ def test_travel_time_is_directed() -> None:
     both (100)."""
     shifts, matrix = two_shift_day(SITE_B, SITE_A)
     result = solve_roster(
-        [CHEAP, PRICEY], shifts, matrix,
+        [CHEAP, PRICEY],
+        shifts,
+        matrix,
         travel_minutes={(SITE_A, SITE_B): 60, (SITE_B, SITE_A): 20},
     )
     assert assigned(result) == {(1, 100), (1, 101)}
@@ -116,9 +119,7 @@ def test_a_missing_travel_time_is_reported_not_guessed() -> None:
     travel time is 45 and the 30-minute gap is within range). The pair is left
     unconstrained, so worker 1 takes both (100), and a warning names it."""
     shifts, matrix = two_shift_day(SITE_A, SITE_B)
-    result = solve_roster(
-        [CHEAP, PRICEY], shifts, matrix, travel_minutes={(SITE_B, 3): 45}
-    )
+    result = solve_roster([CHEAP, PRICEY], shifts, matrix, travel_minutes={(SITE_B, 3): 45})
     assert assigned(result) == {(1, 100), (1, 101)}
     assert result.warnings == [
         "No travel time from site 1 to site 2: shifts there were not checked for travel "
