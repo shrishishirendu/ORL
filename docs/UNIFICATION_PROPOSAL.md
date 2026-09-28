@@ -52,7 +52,7 @@ The UI shell and the pay engine are unified. The product underneath is not.
 The single employee record moves into the platform core. It starts from ORL's `Worker`, the most
 complete operational record, but is owned by the core, not by the workforce module. A payroll import *updates* it: blank fields are
 filled and conflicts are queued for review, using the rules the Employee Sync already applies.
-award-intelligence then reads employees from ORL. The Sync page becomes an "Import payroll master"
+Both modules read people from the core. The Sync page becomes an "Import payroll master"
 step instead of a bridge between two databases.
 
 - Workforce-only fields (skills, home site, availability) stay in the workforce module and are keyed
