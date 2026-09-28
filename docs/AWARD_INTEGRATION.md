@@ -104,6 +104,10 @@ around in ORL. The service normalises *input order* and flags the rest in `warni
    when a shift carries the PH flag, and never consults the calendar. NSW gazetted holidays aren't
    registered, and `marginalCost` and `calcRow` never pass jurisdiction. The service flags holiday shifts
    ("cost may be understated").
+   **Fix raised 2026-09-28:** [award-intelligence PR #2](https://github.com/shreeyanshujha/award-intelligence/pull/2)
+   bundles the verified NSW statewide list (2024–26) into the calendar and has MA000016 segments check
+   it. Other states stay incomplete, with a warning. Once it merges and the pin is bumped, the service's
+   holiday flag should no longer fire for NSW in those years.
 3. **Penalties use the award minimum, not the over-award rate.** A casual L3 at $31.50 on a Sunday prices
    exactly as $29.73 × 2.25 × 7.5, so the over-award adds nothing. This may be award-correct; **owner to
    confirm**.
@@ -111,7 +115,13 @@ around in ORL. The service normalises *input order* and flags the rest in `warni
    rule registry is versioned.
 5. **Gaps raised on ordinary shifts:** a minimum-engagement gap on every full-time shift under 7.6 h, and
    a break-record gap on every shift of 5 h or more unless `break_recorded` is set.
-6. **Minor:**
+6. **Generic path ignores `penaltyRates` shift loadings, and the parsed loadings are wrong.** MA000034
+   was parsed as a single night 15% row on a 12:00–18:00 window, with the afternoon loading missing.
+   MA000018 was parsed as night −85% over 10:00–13:00. **Fix raised 2026-09-28:**
+   [award-intelligence PR #3](https://github.com/shreeyanshujha/award-intelligence/pull/3) pays loadings
+   only from rules verified against the award text (MA000034 cl. 20 so far). Parsed rows are never paid.
+   Shifts that may attract a loading under an unverified award are reported in `validationErrors`.
+7. **Minor:**
    - Employment type is read from the timesheet employee, not the profile.
    - The "Ordinary time" item has no clause reference.
    - The award-intelligence checkout is dirty: `package-lock.json` and `_claude_tmp/`. The pin check
