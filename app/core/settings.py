@@ -34,5 +34,13 @@ class Settings(BaseSettings):
     award_legal_employer: str | None = None
     award_work_type: str | None = None
 
+    # award-intelligence app server (its Express API, not engine-service/),
+    # read by the employee sync (POST /workers/sync-employees). Its
+    # GET /api/employee-master returns raw payroll IDs and always requires
+    # the API token. Unset URL means the sync is disabled.
+    award_intelligence_url: str | None = None
+    award_intelligence_api_token: str | None = None
+    award_intelligence_timeout_s: float = 30.0
+
 
 settings = Settings()
