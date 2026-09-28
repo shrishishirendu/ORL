@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date as date_
 from datetime import time
 
-from sqlalchemy import Boolean, Date, ForeignKey, Index, String, Time
+from sqlalchemy import Boolean, Date, ForeignKey, Index, Integer, String, Time
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -27,6 +27,15 @@ class Shift(Base):
     assigned and routed via a ``Route``/``RouteStop``; one with
     ``is_multi_stop=False`` is expected to resolve straight to a
     ``SiteAssignment`` instead.
+
+    ``break_minutes`` / ``break_start`` are the rostered unpaid break. They
+    are sent to the Award Engine as-is (docs/AWARD_ENGINE_CONTRACT.md), so
+    it prices break-net hours. ``None`` means "not known": the engine is then
+    told 0 minutes (the previous behaviour, an over-estimate for any shift
+    that has an unpaid break). ``break_start`` is needed for the engine to
+    resolve a break that could fall in differently paid time (overnight, or
+    across 06:00/18:00). ORL never infers either value. A rostered break is
+    a plan, not a timesheet record, so ORL doesn't claim ``break_recorded``.
     """
 
     __tablename__ = "shift"
@@ -39,6 +48,8 @@ class Shift(Base):
     required_skill: Mapped[str] = mapped_column(String(100), index=True)
     site_id: Mapped[int] = mapped_column(ForeignKey("site.id"), index=True)
     is_multi_stop: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    break_minutes: Mapped[int | None] = mapped_column(Integer, default=None)
+    break_start: Mapped[time | None] = mapped_column(Time, default=None)
 
     site: Mapped[Site] = relationship(back_populates="shifts")  # noqa: F821
     award_cost_rows: Mapped[list[AwardCostMatrix]] = relationship(  # noqa: F821

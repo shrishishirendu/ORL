@@ -97,11 +97,9 @@ from app.services.award_engine.client import (
     context_from_settings,
 )
 
-# ORL's ``Shift`` has no break column, so every shift is sent with
-# ``break_minutes=0`` (the contract requires the field). FLAG FOR REVIEW:
-# an unpaid break ORL doesn't know about makes the engine's figure an
-# over-estimate for that shift; the fix is a ``Shift.break_minutes`` column,
-# not a guessed default here.
+# Sent when a shift's break is unknown (``Shift.break_minutes`` is None): the
+# contract requires the field. An unpaid break ORL doesn't know about makes
+# the engine's figure an over-estimate for that shift; it is never guessed.
 DEFAULT_BREAK_MINUTES = 0
 
 # Upper bound on worker x shift cells per ``cost-matrix`` request. The
@@ -186,7 +184,10 @@ def to_engine_shift(shift: Shift) -> EngineShift:
         date=shift.date,
         start_time=shift.start_time.strftime("%H:%M"),
         end_time=shift.end_time.strftime("%H:%M"),
-        break_minutes=DEFAULT_BREAK_MINUTES,
+        break_minutes=(
+            shift.break_minutes if shift.break_minutes is not None else DEFAULT_BREAK_MINUTES
+        ),
+        break_start=shift.break_start.strftime("%H:%M") if shift.break_start else None,
         site_code=shift.site.code,
     )
 

@@ -71,6 +71,13 @@ class MultiStopNotSupportedError(AdminDataError):
         )
 
 
+class InvalidBreakError(AdminDataError):
+    """A shift's rostered break doesn't fit it: negative, as long as the
+    shift itself, a ``break_start`` without minutes, or a break that runs
+    outside the shift. Maps to 422.
+    """
+
+
 class UploadValidationError(AdminDataError):
     """One or more rows in a ``POST /admin/data/upload`` submission failed
     validation. Carries every error found, not just the first, per that

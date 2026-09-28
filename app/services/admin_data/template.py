@@ -23,7 +23,7 @@ from app.services.admin_data.upload import (
 # expected shape, not real data (see this module's docstring / the task
 # brief's "clearly a placeholder example, not real data").
 _WORKERS_EXAMPLE_ROW = ["Jane Example", "nursing, first_aid", "north", "NTH-01", "true", "EMP-0001"]
-_SHIFTS_EXAMPLE_ROW = ["2026-04-01", "08:00", "16:00", "nursing", "NTH-01", "false"]
+_SHIFTS_EXAMPLE_ROW = ["2026-04-01", "08:00", "16:00", "nursing", "NTH-01", "false", "", ""]
 
 _LEGEND_HEADER = ["Sheet", "Column", "Required?", "Notes"]
 _LEGEND_ROWS = [
@@ -67,6 +67,20 @@ _LEGEND_ROWS = [
         "must be false or blank",
         "Multi-stop shifts need Job rows, which this upload doesn't manage -- leave "
         "false/blank, or use the existing seed/DB path for multi-stop shifts.",
+    ),
+    (
+        "Shifts",
+        "break_minutes",
+        "optional",
+        "Rostered unpaid break in whole minutes. Leave blank if not known. Sent to the "
+        "award engine so it prices break-net hours.",
+    ),
+    (
+        "Shifts",
+        "break_start",
+        "optional",
+        "HH:MM the unpaid break starts. Needed when the break could fall in "
+        "differently paid time (overnight, or across 06:00/18:00).",
     ),
 ]
 
