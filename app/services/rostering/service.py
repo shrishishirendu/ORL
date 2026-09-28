@@ -32,6 +32,7 @@ from app.models.award_cost_matrix import AwardCostMatrix
 from app.models.enums import RosterStatus
 from app.models.roster import Roster, RosterAssignment
 from app.models.shift import Shift
+from app.models.travel_matrix import TravelMatrixEntry
 from app.models.worker import Worker
 from app.services.rostering.solver import (
     AwardCostMatrixEntry,
@@ -51,6 +52,9 @@ class RosterSolveOutcome:
     total_cost: float | None = None
     failure_reason: str | None = None
     unfilled_shift_ids: list[int] = field(default_factory=list)
+    # Data gaps the solve worked around (e.g. a missing travel time), from
+    # ``RosterSolution.warnings``. Reported, not persisted.
+    warnings: list[str] = field(default_factory=list)
 
 
 def _effective_region(worker: Worker) -> str | None:
@@ -167,7 +171,27 @@ async def solve_and_persist_roster(
             for m in matrix_rows
         ]
 
-    result: RosterSolution = solve_roster(workers, shifts, matrix)
+    # Directed travel times between the period's sites, so Tier 1 never gives
+    # one worker two shifts at different sites too close together to travel
+    # between (solver module docstring point 6).
+    site_ids = {s.site_id for s in shifts if s.site_id is not None}
+    travel_minutes: dict[tuple[int, int], int] = {}
+    if len(site_ids) > 1:
+        travel_rows = (
+            (
+                await session.execute(
+                    select(TravelMatrixEntry).where(
+                        TravelMatrixEntry.from_site_id.in_(site_ids),
+                        TravelMatrixEntry.to_site_id.in_(site_ids),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        travel_minutes = {(t.from_site_id, t.to_site_id): t.travel_minutes for t in travel_rows}
+
+    result: RosterSolution = solve_roster(workers, shifts, matrix, travel_minutes=travel_minutes)
 
     roster = Roster(
         period_start=period_start,
@@ -199,4 +223,5 @@ async def solve_and_persist_roster(
         total_cost=roster.total_cost,
         failure_reason=roster.failure_reason,
         unfilled_shift_ids=list(result.unfilled_shifts),
+        warnings=list(result.warnings),
     )

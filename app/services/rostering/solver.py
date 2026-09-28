@@ -73,12 +73,37 @@ the schema -- flagging these explicitly rather than silently picking one:
    ``WorkerInput.region`` so the filter actually bites; a `None` here
    should be read as "region unknown to this solve", not "no home region",
    since every ``Worker`` now has a mandatory ``home_site_id``.
+6. **Travel time between a worker's shifts** (product decision 2026-09-29:
+   a general workforce, where one worker can do several shifts a day at
+   different sites). When ``travel_minutes`` is supplied, a worker is never
+   given two shifts at different sites whose gap -- the end of the earlier
+   to the start of the later, on the absolute timeline so overnight shifts
+   count -- is shorter than the directed travel time from the first site to
+   the second. It is a hard feasibility rule, like no-double-booking; the
+   **objective is unchanged** (still exactly total ``pay_cost``). Travel
+   pay, broken-shift and minimum-engagement rules stay with the Award
+   Interpretation Engine, which prices whole days.
+
+   The rule is pairwise over every two shifts a worker could hold, which is
+   exact for consecutive shifts. For a worker with shifts A, B, C it also
+   checks A -> C directly; with a travel matrix that obeys the triangle
+   inequality that is implied by A -> B and B -> C, so it only bites if the
+   matrix has A -> C longer than A -> B -> C.
+
+   **A missing travel-matrix entry is never read as 0 minutes** (the same
+   rule as Tier 2's ``MissingTravelTimeError``). A pair of shifts at two
+   sites with no entry, and a gap shorter than the longest travel time in
+   the supplied matrix, is left unconstrained and reported in
+   ``RosterSolution.warnings`` so the gap in the data is visible. With no
+   travel data at all, a single warning says travel was not checked.
+   ``travel_minutes=None`` (the default, for callers that predate this rule)
+   skips the check entirely.
 """
 
 from __future__ import annotations
 
 import enum
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date as date_
 from datetime import datetime, time, timedelta
@@ -186,6 +211,9 @@ class RosterSolution:
     total_cost: float | None = None
     unfilled_shifts: list[int] = field(default_factory=list)
     diagnostics: list[str] = field(default_factory=list)
+    # Data gaps the solve worked around without guessing (e.g. a missing
+    # travel time between two sites). Set whatever the status.
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def is_feasible(self) -> bool:
@@ -227,6 +255,58 @@ def _worker_hour_bounds_minutes(
     return bounds
 
 
+def _travel_conflicts(
+    shifts: Sequence[ShiftInput],
+    candidates_by_shift: dict[int, list[WorkerInput]],
+    epoch: date_,
+    travel_minutes: Mapping[tuple[int, int], int],
+) -> tuple[list[tuple[int, int]], list[str]]:
+    """Pairs of shifts no single worker can hold because the travel time
+    between their sites doesn't fit the gap, plus warnings for site pairs with
+    no travel time. See module docstring point 6.
+
+    Only pairs sharing at least one candidate worker matter. Overlapping
+    pairs are left to NoOverlap. Shifts are scanned in start order, so once
+    the gap reaches the longest known travel time no later shift can conflict.
+    """
+    windows = []
+    for shift in shifts:
+        start, duration = _shift_window(shift, epoch)
+        windows.append((start, start + duration, shift))
+    windows.sort(key=lambda w: (w[0], w[2].id))
+    candidate_ids = {s.id: {w.id for w in candidates_by_shift[s.id]} for s in shifts}
+    longest = max(travel_minutes.values(), default=0)
+
+    conflicts: list[tuple[int, int]] = []
+    missing: set[tuple[int, int]] = set()
+    for i, (_, a_end, a) in enumerate(windows):
+        for b_start, _, b in windows[i + 1 :]:
+            gap = b_start - a_end
+            if gap >= longest:
+                break
+            if gap < 0 or a.site_id is None or b.site_id is None or a.site_id == b.site_id:
+                continue
+            if not candidate_ids[a.id] & candidate_ids[b.id]:
+                continue
+            needed = travel_minutes.get((a.site_id, b.site_id))
+            if needed is None:
+                missing.add((a.site_id, b.site_id))
+            elif gap < needed:
+                conflicts.append((a.id, b.id))
+
+    warnings = [
+        f"No travel time from site {src} to site {dst}: shifts there were not checked for "
+        "travel between them. Add the pair to the travel matrix."
+        for src, dst in sorted(missing)
+    ]
+    if not travel_minutes and len({s.site_id for s in shifts if s.site_id is not None}) > 1:
+        warnings.append(
+            "No travel times were loaded, so travel between a worker's shifts at different "
+            "sites was not checked."
+        )
+    return conflicts, warnings
+
+
 def _build_model(
     workers: Sequence[WorkerInput],
     shifts: Sequence[ShiftInput],
@@ -236,6 +316,7 @@ def _build_model(
     epoch: date_,
     *,
     allow_unfilled: bool,
+    travel_conflicts: Sequence[tuple[int, int]] = (),
 ) -> tuple[
     cp_model.CpModel,
     dict[tuple[int, int], cp_model.IntVar],
@@ -283,6 +364,15 @@ def _build_model(
         if len(intervals) > 1:
             model.AddNoOverlap(intervals)
 
+    # Travel between sites: never both shifts of a conflicting pair for one
+    # worker (module docstring point 6).
+    for a_id, b_id in travel_conflicts:
+        for worker in candidates_by_shift[a_id]:
+            if (worker.id, b_id) in assign_vars:
+                model.AddBoolOr(
+                    [assign_vars[(worker.id, a_id)].Not(), assign_vars[(worker.id, b_id)].Not()]
+                )
+
     # min/max hours over the period (see module docstring points 1 and 2).
     for worker in workers:
         worker_terms = [
@@ -314,6 +404,7 @@ def _diagnose_infeasibility(
     hour_bounds: dict[int, tuple[int | None, int | None]],
     epoch: date_,
     max_time_in_seconds: float,
+    travel_conflicts: Sequence[tuple[int, int]] = (),
 ) -> list[int]:
     """Re-solve with each shift's coverage made optional (at a heavy penalty)
     to find which shifts are actually in conflict with the hard
@@ -329,6 +420,7 @@ def _diagnose_infeasibility(
         hour_bounds,
         epoch,
         allow_unfilled=True,
+        travel_conflicts=travel_conflicts,
     )
     penalty_terms = [_UNFILLED_PENALTY_WEIGHT * var for var in unfilled_vars.values()]
     # Cost terms need integer coefficients too; scale to cents like the main
@@ -355,11 +447,14 @@ def solve_roster(
     matrix: Sequence[AwardCostMatrixEntry],
     *,
     max_time_in_seconds: float = 30.0,
+    travel_minutes: Mapping[tuple[int, int], int] | None = None,
 ) -> RosterSolution:
     """Solve a Tier 1 roster with CP-SAT.
 
     Pure function: no DB access, no I/O. Assigns each shift to exactly one
-    eligible, skilled worker while respecting no-double-booking and each
+    eligible, skilled worker while respecting no-double-booking, travel time
+    between a worker's shifts at different sites (``travel_minutes``, keyed
+    ``(from_site_id, to_site_id)`` -- see module docstring point 6) and each
     worker's min/max hours over the period, minimizing total ``pay_cost``.
 
     Returns a `RosterSolution` in all cases -- including when no feasible
@@ -427,6 +522,12 @@ def solve_roster(
 
     epoch = min(s.date for s in shifts)
     hour_bounds = _worker_hour_bounds_minutes(list(worker_by_id), matrix_by_worker)
+    travel_conflicts: list[tuple[int, int]] = []
+    warnings: list[str] = []
+    if travel_minutes is not None:
+        travel_conflicts, warnings = _travel_conflicts(
+            shifts, candidates_by_shift, epoch, travel_minutes
+        )
 
     model, assign_vars, _ = _build_model(
         workers,
@@ -436,6 +537,7 @@ def solve_roster(
         hour_bounds,
         epoch,
         allow_unfilled=False,
+        travel_conflicts=travel_conflicts,
     )
     cost_terms = [
         round(matrix_by_ws[(w_id, s_id)].pay_cost * _PAY_COST_SCALE) * var
@@ -467,6 +569,7 @@ def solve_roster(
             status=solve_status,
             assignments=assignments,
             total_cost=round(total_cost, 2),
+            warnings=warnings,
         )
 
     # Every shift has >=1 eligible/skilled candidate, yet no feasible
@@ -481,15 +584,17 @@ def solve_roster(
         hour_bounds,
         epoch,
         max_time_in_seconds,
+        travel_conflicts,
     )
     diagnostics = [
         f"Shift {sid}: could not be covered without violating a worker's "
-        "no-double-booking or min/max-hours constraint (all eligible/skilled "
-        "candidates are ruled out once those constraints are applied)."
+        "no-double-booking, travel-time-between-sites or min/max-hours constraint "
+        "(all eligible/skilled candidates are ruled out once those constraints are applied)."
         for sid in unfilled
     ]
     return RosterSolution(
         status=SolveStatus.INFEASIBLE,
         unfilled_shifts=unfilled,
         diagnostics=diagnostics,
+        warnings=warnings,
     )
