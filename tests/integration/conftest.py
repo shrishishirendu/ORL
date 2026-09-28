@@ -32,7 +32,8 @@ from app.models import Base
 
 @pytest.fixture(scope="session", autouse=True)
 def _test_database() -> None:
-    """Recreate the test database and migrate it to head, once per run. ``tests/conftest.py`` has already pointed ``DATABASE_URL`` at it
+    """Recreate the test database and migrate it to head, once per run.
+    ``tests/conftest.py`` has already pointed ``DATABASE_URL`` at it
     (``<dev db>_test``), so this never touches the dev database. If Postgres
     isn't reachable at all, do nothing: ``_require_postgres`` skips each test.
     """
@@ -50,7 +51,10 @@ def _test_database() -> None:
     async def ensure_database() -> bool:
         try:
             conn = await asyncpg.connect(
-                user=url.username, password=url.password, host=url.host, port=url.port or 5432,
+                user=url.username,
+                password=url.password,
+                host=url.host,
+                port=url.port or 5432,
                 database="postgres",
             )
         except (OSError, asyncpg.PostgresError):

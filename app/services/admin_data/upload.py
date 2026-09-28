@@ -71,7 +71,7 @@ def _parse_bool(raw: object, *, default: bool) -> bool | None:
 
 
 def _parse_skills(raw: object) -> list[str]:
-    """"nursing, first_aid" -> ["nursing", "first_aid"]."""
+    """ "nursing, first_aid" -> ["nursing", "first_aid"]."""
     return [s.strip() for s in str(raw or "").split(",") if s.strip()]
 
 
@@ -309,8 +309,10 @@ async def process_upload(
     sites_by_code: dict[str, Site] = {}
     if all_site_codes:
         site_rows = (
-            await session.execute(select(Site).where(Site.code.in_(all_site_codes)))
-        ).scalars().all()
+            (await session.execute(select(Site).where(Site.code.in_(all_site_codes))))
+            .scalars()
+            .all()
+        )
         sites_by_code = {s.code: s for s in site_rows}
         for code in sorted(all_site_codes - sites_by_code.keys()):
             errors.append(f"unknown site code {code!r} referenced in the upload")

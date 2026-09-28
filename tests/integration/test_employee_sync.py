@@ -24,13 +24,24 @@ def master_body(*employees: dict) -> dict:
     return {
         "ok": True,
         "schemaVersion": "employee-master-export/v1",
-        "source": {"auditId": "audit-7", "createdAt": "2026-09-29T00:00:00Z", "sourceName": "Nsw_Payroll.xlsx", "lastDate": "2018-03-26"},
+        "source": {
+            "auditId": "audit-7",
+            "createdAt": "2026-09-29T00:00:00Z",
+            "sourceName": "Nsw_Payroll.xlsx",
+            "lastDate": "2018-03-26",
+        },
         "employees": list(employees),
     }
 
 
 def employee(employee_id: str, **fields: str) -> dict:
-    return {"employeeId": employee_id, "employmentType": "Casual", "awardCode": "MA000016-NSW", "stateCode": "NSW", **fields}
+    return {
+        "employeeId": employee_id,
+        "employmentType": "Casual",
+        "awardCode": "MA000016-NSW",
+        "stateCode": "NSW",
+        **fields,
+    }
 
 
 def serve(monkeypatch, status: int = 200, body: dict | None = None) -> None:
@@ -53,8 +64,12 @@ async def seed(db_session) -> dict[str, int]:
     blank = await make_worker(db_session, site, name="Blank Fields", skills=["guard"])
     blank.employee_code = "30458"
     conflicting = await make_worker(
-        db_session, site, name="Conflicting", skills=["guard"],
-        award_code="MA000034", employment_type=EmploymentType.FULL_TIME,
+        db_session,
+        site,
+        name="Conflicting",
+        skills=["guard"],
+        award_code="MA000034",
+        employment_type=EmploymentType.FULL_TIME,
     )
     conflicting.employee_code = "10001"
     unmatched = await make_worker(db_session, site, name="Not In Payroll", skills=["guard"])
@@ -79,8 +94,15 @@ async def test_preview_reports_without_writing(client, db_session, monkeypatch) 
     body = response.json()
     assert body["applied"] is False
     assert body["summary"] == {
-        "orl_workers": 4, "master_employees": 3, "matched": 2, "fills": 2, "conflicts": 2,
-        "unmappable": 0, "orl_only": 1, "orl_without_code": 1, "master_only": 1,
+        "orl_workers": 4,
+        "master_employees": 3,
+        "matched": 2,
+        "fills": 2,
+        "conflicts": 2,
+        "unmappable": 0,
+        "orl_only": 1,
+        "orl_without_code": 1,
+        "master_only": 1,
     }
     assert body["source"]["source_name"] == "Nsw_Payroll.xlsx"
     assert [e["employee_id"] for e in body["master_only"]] == ["55555"]

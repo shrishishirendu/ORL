@@ -253,13 +253,9 @@ async def handle_reoptimization_event_task(
         # A sick worker is unavailable for the rest of the shift, so the
         # re-roster of that date must not assign them again.
         excluded = (
-            [outcome.worker_id]
-            if outcome.event_type is ReoptimizationEventType.WORKER_SICK
-            else []
+            [outcome.worker_id] if outcome.event_type is ReoptimizationEventType.WORKER_SICK else []
         )
-        chained_job = await ctx["redis"].enqueue_job(
-            "solve_roster_task", period, period, excluded
-        )
+        chained_job = await ctx["redis"].enqueue_job("solve_roster_task", period, period, excluded)
         result["escalation_roster_job_id"] = chained_job.job_id if chained_job is not None else None
 
     return result

@@ -194,12 +194,16 @@ async def replace_shifts_for_period(
     ``upsert_workers_from_rows``).
     """
     existing = (
-        await session.execute(
-            select(Shift)
-            .options(selectinload(Shift.site))
-            .where(Shift.date >= period_start, Shift.date <= period_end)
+        (
+            await session.execute(
+                select(Shift)
+                .options(selectinload(Shift.site))
+                .where(Shift.date >= period_start, Shift.date <= period_end)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     summary = ShiftsReplaceSummary(period_start=period_start, period_end=period_end)
 
@@ -208,24 +212,32 @@ async def replace_shifts_for_period(
     existing_ids = [s.id for s in existing]
     if existing_ids:
         ra_rows = (
-            await session.execute(
-                select(RosterAssignment.shift_id)
-                .where(RosterAssignment.shift_id.in_(existing_ids))
-                .distinct()
+            (
+                await session.execute(
+                    select(RosterAssignment.shift_id)
+                    .where(RosterAssignment.shift_id.in_(existing_ids))
+                    .distinct()
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         ra_shift_ids = set(ra_rows)
 
         real_award_rows = (
-            await session.execute(
-                select(AwardCostMatrix.shift_id)
-                .where(
-                    AwardCostMatrix.shift_id.in_(existing_ids),
-                    AwardCostMatrix.is_placeholder.is_(False),
+            (
+                await session.execute(
+                    select(AwardCostMatrix.shift_id)
+                    .where(
+                        AwardCostMatrix.shift_id.in_(existing_ids),
+                        AwardCostMatrix.is_placeholder.is_(False),
+                    )
+                    .distinct()
                 )
-                .distinct()
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         real_award_shift_ids = set(real_award_rows)
 
     deletable_ids: list[int] = []

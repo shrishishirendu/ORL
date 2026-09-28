@@ -27,29 +27,47 @@ def next_steps(report: SyncEmployeesResponse) -> list[str]:
     s = report.summary
     steps: list[str] = []
     if s.fills and not report.applied:
-        steps.append(f"{_plural(s.fills, 'blank ORL field')} can be filled from the employee master: run again with apply.")
+        steps.append(
+            f"{_plural(s.fills, 'blank ORL field')} can be filled from the employee master: "
+            "run again with apply."
+        )
     if report.applied and s.fills:
         steps.append(
-            "Award fields changed: re-run the award cost sync (POST /award-engine/sync-matrix) so roster costs use them."
+            "Award fields changed: re-run the award cost sync (POST /award-engine/sync-matrix) "
+            "so roster costs use them."
         )
     if s.conflicts:
         steps.append(
-            f"{_plural(s.conflicts, 'conflict')}: both systems hold a different value. Decide which is right and "
-            "correct the record in the other system. The sync never overwrites."
+            f"{_plural(s.conflicts, 'conflict')}: both systems hold a different value. "
+            "Decide which is right and correct the record in the other system. "
+            "The sync never overwrites."
         )
     if s.unmappable:
-        steps.append(f"Not expressible in ORL, check by hand: {_plural(s.unmappable, 'employee-master value')}.")
+        steps.append(
+            "Not expressible in ORL, check by hand: "
+            f"{_plural(s.unmappable, 'employee-master value')}."
+        )
     if s.master_only:
         steps.append(
-            f"Only in award-intelligence: {_plural(s.master_only, 'employee')}. Add them in ORL with their "
-            "employee_code (skills and a home site are needed, and aren't in the employee master)."
+            f"Only in award-intelligence: {_plural(s.master_only, 'employee')}. "
+            "Add them in ORL with their employee_code (skills and a home site are needed, "
+            "and aren't in the employee master)."
         )
     if s.orl_only:
-        steps.append(f"Not in the latest payroll import: {_plural(s.orl_only, 'ORL worker')} (employee_code not found).")
+        steps.append(
+            f"Not in the latest payroll import: {_plural(s.orl_only, 'ORL worker')} "
+            "(employee_code not found)."
+        )
     if s.orl_without_code:
-        steps.append(f"No employee_code, so they can't be matched: {_plural(s.orl_without_code, 'ORL worker')}.")
+        steps.append(
+            "No employee_code, so they can't be matched: "
+            f"{_plural(s.orl_without_code, 'ORL worker')}."
+        )
     if s.matched:
-        steps.append("classification_level isn't synced: the employee master has no engine level key. Set it in ORL.")
+        steps.append(
+            "classification_level isn't synced: the employee master has no engine level key. "
+            "Set it in ORL."
+        )
     return steps
 
 

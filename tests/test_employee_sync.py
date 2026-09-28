@@ -25,21 +25,44 @@ def master_body(*employees: dict) -> dict:
     return {
         "ok": True,
         "schemaVersion": "employee-master-export/v1",
-        "source": {"auditId": "audit-7", "createdAt": "2026-09-29T00:00:00Z", "sourceName": "Nsw_Payroll.xlsx", "lastDate": "2018-03-26"},
+        "source": {
+            "auditId": "audit-7",
+            "createdAt": "2026-09-29T00:00:00Z",
+            "sourceName": "Nsw_Payroll.xlsx",
+            "lastDate": "2018-03-26",
+        },
         "employees": list(employees),
     }
 
 
 def employee(employee_id: str, **fields: str) -> dict:
-    return {"employeeId": employee_id, "employmentType": "Casual", "awardCode": "MA000016-NSW", "stateCode": "NSW", **fields}
+    return {
+        "employeeId": employee_id,
+        "employmentType": "Casual",
+        "awardCode": "MA000016-NSW",
+        "stateCode": "NSW",
+        **fields,
+    }
 
 
 def export(*employees: dict) -> EmployeeMasterExport:
     return parse_export(master_body(*employees))
 
 
-def worker(worker_id: int, code: str | None, *, award: str | None = None, employment: EmploymentType | None = None) -> WorkerSnapshot:
-    return WorkerSnapshot(id=worker_id, name=f"Worker {worker_id}", employee_code=code, award_code=award, employment_type=employment)
+def worker(
+    worker_id: int,
+    code: str | None,
+    *,
+    award: str | None = None,
+    employment: EmploymentType | None = None,
+) -> WorkerSnapshot:
+    return WorkerSnapshot(
+        id=worker_id,
+        name=f"Worker {worker_id}",
+        employee_code=code,
+        award_code=award,
+        employment_type=employment,
+    )
 
 
 def fields_of(report: SyncEmployeesResponse, worker_id: int) -> dict[str, FieldOutcome]:
@@ -74,10 +97,17 @@ async def test_client_sends_the_token_and_parses_the_export() -> None:
 
 @pytest.mark.parametrize(
     ("status", "error"),
-    [(503, EmployeeMasterUnavailable), (500, EmployeeMasterUnavailable), (403, EmployeeMasterError), (404, EmployeeMasterError)],
+    [
+        (503, EmployeeMasterUnavailable),
+        (500, EmployeeMasterUnavailable),
+        (403, EmployeeMasterError),
+        (404, EmployeeMasterError),
+    ],
 )
 async def test_client_maps_error_statuses(status: int, error: type[Exception]) -> None:
-    async with client_answering(lambda _r: httpx.Response(status, json={"error": "nope"})) as client:
+    async with client_answering(
+        lambda _r: httpx.Response(status, json={"error": "nope"})
+    ) as client:
         with pytest.raises(error):
             await client.employee_master()
 
@@ -92,7 +122,9 @@ async def test_client_treats_a_network_failure_as_unavailable() -> None:
 
 
 async def test_client_rejects_the_wrong_schema() -> None:
-    async with client_answering(lambda _r: httpx.Response(200, json={"ok": True, "employees": []})) as client:
+    async with client_answering(
+        lambda _r: httpx.Response(200, json={"ok": True, "employees": []})
+    ) as client:
         with pytest.raises(EmployeeMasterError, match="employee-master-export/v1"):
             await client.employee_master()
 
@@ -111,15 +143,25 @@ def test_matches_on_employee_code_and_groups_the_rest() -> None:
     assert [w.worker_id for w in report.orl_without_code] == [3]
     assert [e.employee_id for e in report.master_only] == ["55555"]
     assert report.summary.model_dump() == {
-        "orl_workers": 4, "master_employees": 3, "matched": 2, "fills": 4, "conflicts": 0,
-        "unmappable": 0, "orl_only": 1, "orl_without_code": 1, "master_only": 1,
+        "orl_workers": 4,
+        "master_employees": 3,
+        "matched": 2,
+        "fills": 4,
+        "conflicts": 0,
+        "unmappable": 0,
+        "orl_only": 1,
+        "orl_without_code": 1,
+        "master_only": 1,
     }
 
 
 def test_blank_orl_fields_are_fills_with_mapped_values() -> None:
     report = build_report([worker(1, "30458")], export(employee("30458")), jurisdiction="NSW")
     entry = report.matched[0]
-    assert fields_of(report, 1) == {"employment_type": FieldOutcome.FILL, "award_code": FieldOutcome.FILL}
+    assert fields_of(report, 1) == {
+        "employment_type": FieldOutcome.FILL,
+        "award_code": FieldOutcome.FILL,
+    }
     assert [mapped_value(f) for f in entry.fields] == [EmploymentType.CASUAL, "MA000016"]
     assert [f.fill_value for f in entry.fields] == ["casual", "MA000016"]
 
@@ -130,7 +172,10 @@ def test_equal_values_are_same_after_mapping() -> None:
         export(employee("30458")),
         jurisdiction="NSW",
     )
-    assert fields_of(report, 1) == {"employment_type": FieldOutcome.SAME, "award_code": FieldOutcome.SAME}
+    assert fields_of(report, 1) == {
+        "employment_type": FieldOutcome.SAME,
+        "award_code": FieldOutcome.SAME,
+    }
     assert report.matched[0].notes == []
 
 
@@ -140,7 +185,10 @@ def test_differing_values_are_conflicts() -> None:
         export(employee("30458")),
         jurisdiction="NSW",
     )
-    assert fields_of(report, 1) == {"employment_type": FieldOutcome.CONFLICT, "award_code": FieldOutcome.CONFLICT}
+    assert fields_of(report, 1) == {
+        "employment_type": FieldOutcome.CONFLICT,
+        "award_code": FieldOutcome.CONFLICT,
+    }
     assert report.summary.conflicts == 2
 
 
@@ -150,11 +198,18 @@ def test_unknown_and_blank_master_values() -> None:
         export(employee("30458", employmentType="Contractor", awardCode="")),
         jurisdiction="NSW",
     )
-    assert fields_of(report, 1) == {"employment_type": FieldOutcome.UNMAPPABLE, "award_code": FieldOutcome.MASTER_BLANK}
+    assert fields_of(report, 1) == {
+        "employment_type": FieldOutcome.UNMAPPABLE,
+        "award_code": FieldOutcome.MASTER_BLANK,
+    }
 
 
 def test_notes_a_state_suffix_outside_orl_jurisdiction() -> None:
-    report = build_report([worker(1, "30458")], export(employee("30458", awardCode="MA000016-VIC")), jurisdiction="NSW")
+    report = build_report(
+        [worker(1, "30458")],
+        export(employee("30458", awardCode="MA000016-VIC")),
+        jurisdiction="NSW",
+    )
     assert fields_of(report, 1)["award_code"] is FieldOutcome.FILL
     assert "MA000016-VIC" in report.matched[0].notes[0]
 
