@@ -17,6 +17,7 @@ would end an outer "rollback at the end" transaction early.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -27,6 +28,47 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import app.core.queue as queue_module
 from app.core.db import async_session_factory, engine
 from app.models import Base
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _test_database() -> None:
+    """Create the test database if it's missing and migrate it to head, once
+    per run. ``tests/conftest.py`` has already pointed ``DATABASE_URL`` at it
+    (``<dev db>_test``), so this never touches the dev database. If Postgres
+    isn't reachable at all, do nothing: ``_require_postgres`` skips each test.
+    """
+    import asyncio
+
+    import asyncpg
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy.engine import make_url
+
+    url = make_url(engine.url.render_as_string(hide_password=False))
+    assert url.database and url.database.endswith("_test"), url.database
+
+    async def ensure_database() -> bool:
+        try:
+            conn = await asyncpg.connect(
+                user=url.username, password=url.password, host=url.host, port=url.port or 5432,
+                database="postgres",
+            )
+        except (OSError, asyncpg.PostgresError):
+            return False
+        try:
+            exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", url.database)
+            if not exists:
+                await conn.execute(f'CREATE DATABASE "{url.database}"')
+        finally:
+            await conn.close()
+        return True
+
+    if not asyncio.run(ensure_database()):
+        return
+    root = Path(__file__).resolve().parents[2]
+    config = Config(str(root / "alembic.ini"))
+    config.set_main_option("script_location", str(root / "alembic"))
+    command.upgrade(config, "head")
 
 
 async def _postgres_reachable() -> bool:
