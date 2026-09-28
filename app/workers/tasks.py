@@ -82,6 +82,7 @@ def _roster_outcome_to_dict(outcome: RosterSolveOutcome) -> dict[str, Any]:
         "total_cost": outcome.total_cost,
         "failure_reason": outcome.failure_reason,
         "unfilled_shift_ids": outcome.unfilled_shift_ids,
+        "warnings": outcome.warnings,
     }
 
 
