@@ -32,8 +32,7 @@ from app.models import Base
 
 @pytest.fixture(scope="session", autouse=True)
 def _test_database() -> None:
-    """Create the test database if it's missing and migrate it to head, once
-    per run. ``tests/conftest.py`` has already pointed ``DATABASE_URL`` at it
+    """Recreate the test database and migrate it to head, once per run. ``tests/conftest.py`` has already pointed ``DATABASE_URL`` at it
     (``<dev db>_test``), so this never touches the dev database. If Postgres
     isn't reachable at all, do nothing: ``_require_postgres`` skips each test.
     """
@@ -57,11 +56,10 @@ def _test_database() -> None:
         except (OSError, asyncpg.PostgresError):
             return False
         try:
-            exists = await conn.fetchval(
-                "SELECT 1 FROM pg_database WHERE datname = $1", url.database
-            )
-            if not exists:
-                await conn.execute(f'CREATE DATABASE "{url.database}"')
+            # Recreated on every run: it's disposable, and a database left at
+            # another branch's migration head would make `upgrade` fail.
+            await conn.execute(f'DROP DATABASE IF EXISTS "{url.database}" WITH (FORCE)')
+            await conn.execute(f'CREATE DATABASE "{url.database}"')
         finally:
             await conn.close()
         return True
