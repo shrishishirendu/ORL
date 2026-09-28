@@ -181,6 +181,8 @@ async def test_worker_sick_escalation_chains_a_real_roster_job_through_the_queue
     # The chained Tier 1 job actually ran (inside the same burst) and
     # persisted its own Roster.
     assert chained_result["status"] in ("solved", "failed")
+    # The sick worker is left out of the re-roster of their shift's date.
+    assert chained_result["excluded_worker_ids"] == [worker_row.id]
 
     event_row = (
         await db_session.execute(

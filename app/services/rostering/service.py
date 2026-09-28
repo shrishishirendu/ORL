@@ -82,7 +82,11 @@ def _format_failure_reason(result: RosterSolution) -> str:
 
 
 async def solve_and_persist_roster(
-    session: AsyncSession, period_start: date, period_end: date
+    session: AsyncSession,
+    period_start: date,
+    period_end: date,
+    *,
+    excluded_worker_ids: frozenset[int] = frozenset(),
 ) -> RosterSolveOutcome:
     """Load Tier 1 inputs for ``period_start..period_end``, solve, persist.
 
@@ -90,18 +94,19 @@ async def solve_and_persist_roster(
     (joined to ``Site`` for region), the matching ``AwardCostMatrix`` rows,
     call ``solve_roster``, then persist a ``Roster`` (+ ``RosterAssignment``
     rows on success) reflecting the outcome.
+
+    ``excluded_worker_ids`` are left out of the candidate pool for this solve
+    only, e.g. a worker who reported sick, when a Tier 3 escalation
+    re-rosters their shift's date. Without it the cost objective could hand
+    the shift straight back to them. The pure solver is unchanged: the
+    workers are simply never loaded as candidates.
     """
-    worker_rows = (
-        (
-            await session.execute(
-                select(Worker)
-                .options(selectinload(Worker.home_site))
-                .where(Worker.active.is_(True))
-            )
-        )
-        .scalars()
-        .all()
+    worker_query = (
+        select(Worker).options(selectinload(Worker.home_site)).where(Worker.active.is_(True))
     )
+    if excluded_worker_ids:
+        worker_query = worker_query.where(Worker.id.not_in(excluded_worker_ids))
+    worker_rows = (await session.execute(worker_query)).scalars().all()
     workers = [
         WorkerInput(id=w.id, skills=frozenset(w.skills), region=_effective_region(w))
         for w in worker_rows

@@ -130,8 +130,9 @@ async def test_reoptimization_task_chains_a_roster_job_on_escalation(db_session)
     )
 
     assert result["outcome"] == "escalated_to_tier1"
+    # The sick worker is excluded from the re-roster of their shift's date.
     mock_redis.enqueue_job.assert_awaited_once_with(
-        "solve_roster_task", SHIFT_DATE.isoformat(), SHIFT_DATE.isoformat()
+        "solve_roster_task", SHIFT_DATE.isoformat(), SHIFT_DATE.isoformat(), [worker.id]
     )
     assert result["escalation_roster_job_id"] == "chained-job-123"
 
