@@ -10,6 +10,7 @@ from app.api import (
     admin_data,
     award_engine,
     dispatch,
+    employee_sync,
     events,
     health,
     rostering,
@@ -36,6 +37,7 @@ app.include_router(health.router)
 app.include_router(rostering.router)
 app.include_router(dispatch.router)
 app.include_router(events.router)
+app.include_router(employee_sync.router)
 app.include_router(workers.router)
 app.include_router(shifts.router)
 app.include_router(rosters.router)
