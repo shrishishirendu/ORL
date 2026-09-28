@@ -42,7 +42,9 @@ class RecordingRedis:
         return _Job()
 
 
-async def test_sick_escalation_excludes_the_sick_worker_from_the_re_roster(db_session, monkeypatch) -> None:
+async def test_sick_escalation_excludes_the_sick_worker_from_the_re_roster(
+    db_session, monkeypatch
+) -> None:
     # Keep the test hermetic: no award engine for post-solve reconciliation.
     monkeypatch.setattr(tasks_module, "client_from_settings", lambda: None)
     home = await make_site(db_session, "SICK-HOME", region="North")
@@ -50,12 +52,20 @@ async def test_sick_escalation_excludes_the_sick_worker_from_the_re_roster(db_se
     sick = await make_worker(db_session, home, name="Sick", skills=["driver"])
     cover = await make_worker(db_session, home, name="Cover", skills=["driver"])
     shift = await make_shift(
-        db_session, home, date=SHIFT_DATE, start_time=time(8, 0), end_time=time(16, 0),
-        required_skill="driver", is_multi_stop=True,
+        db_session,
+        home,
+        date=SHIFT_DATE,
+        start_time=time(8, 0),
+        end_time=time(16, 0),
+        required_skill="driver",
+        is_multi_stop=True,
     )
     await make_job(
-        db_session, shift, site_a,
-        window_start=datetime(2026, 3, 9, 9, 0), window_end=datetime(2026, 3, 9, 10, 0),
+        db_session,
+        shift,
+        site_a,
+        window_start=datetime(2026, 3, 9, 9, 0),
+        window_end=datetime(2026, 3, 9, 10, 0),
         duration_minutes=15,
     )
     await make_travel_entry(db_session, home, site_a, 10)
@@ -74,7 +84,9 @@ async def test_sick_escalation_excludes_the_sick_worker_from_the_re_roster(db_se
     )
 
     assert result["outcome"] == "escalated_to_tier1"
-    assert redis.jobs == [("solve_roster_task", (SHIFT_DATE.isoformat(), SHIFT_DATE.isoformat(), [sick.id]))]
+    assert redis.jobs == [
+        ("solve_roster_task", (SHIFT_DATE.isoformat(), SHIFT_DATE.isoformat(), [sick.id]))
+    ]
 
     # Run the chained job as arq would.
     _, args = redis.jobs[0]

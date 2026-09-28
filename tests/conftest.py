@@ -49,7 +49,11 @@ def _test_redis_url() -> str:
     if explicit:
         return explicit
     base = _configured("REDIS_URL", _DEFAULT_REDIS_URL)
-    return f"{base.rsplit('/', 1)[0]}/{_TEST_REDIS_DB}" if base.count("/") >= 3 else f"{base}/{_TEST_REDIS_DB}"
+    return (
+        f"{base.rsplit('/', 1)[0]}/{_TEST_REDIS_DB}"
+        if base.count("/") >= 3
+        else f"{base}/{_TEST_REDIS_DB}"
+    )
 
 
 os.environ["DATABASE_URL"] = _test_database_url()

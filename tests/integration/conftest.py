@@ -40,9 +40,10 @@ def _test_database() -> None:
     import asyncio
 
     import asyncpg
-    from alembic import command
     from alembic.config import Config
     from sqlalchemy.engine import make_url
+
+    from alembic import command
 
     url = make_url(engine.url.render_as_string(hide_password=False))
     assert url.database and url.database.endswith("_test"), url.database
@@ -56,7 +57,9 @@ def _test_database() -> None:
         except (OSError, asyncpg.PostgresError):
             return False
         try:
-            exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", url.database)
+            exists = await conn.fetchval(
+                "SELECT 1 FROM pg_database WHERE datname = $1", url.database
+            )
             if not exists:
                 await conn.execute(f'CREATE DATABASE "{url.database}"')
         finally:
