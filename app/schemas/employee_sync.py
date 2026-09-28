@@ -34,6 +34,8 @@ class FieldComparison(BaseModel):
     orl_value: str | None
     master_value: str | None
     outcome: FieldOutcome
+    # For FILL: the value apply writes (e.g. "MA000016" from "MA000016-NSW").
+    fill_value: str | None = None
     applied: bool = False
 
 

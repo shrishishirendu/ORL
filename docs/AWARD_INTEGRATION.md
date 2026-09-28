@@ -147,6 +147,21 @@ around in ORL. The service normalises *input order* and flags the rest in `warni
 - **Data ownership:** both systems keep their own data. Employees are **synced** between ORL
   `Worker` (keyed by `employee_code`) and the award-intelligence employee master (keyed by
   `employeeId`). The sync must be explicit and must report conflicts, never overwrite them silently.
+- **Employee sync (built 2026-09-29).** award-intelligence has no employee store that accepts writes, so
+  the sync is a read on its side and a report on ORL's:
+  - award-intelligence exposes `GET /api/employee-master`
+    ([PR #4](https://github.com/shreeyanshujha/award-intelligence/pull/4)). It returns the employee master
+    behind the latest payroll import, with **raw payroll IDs** (owner decision, 2026-09-29) and the API
+    token always required. It carries no names, no pay amounts, and no date of birth or gender.
+  - ORL runs `POST /workers/sync-employees` (`app/services/employee_sync/`). It matches
+    `employee_code` == `employeeId` exactly and compares `employment_type` and `award_code`
+    ("MA000016-NSW" → `MA000016`, with a note if the state differs from `AWARD_JURISDICTION`).
+  - Preview is the default. **Apply only fills blank ORL fields** (owner decision, 2026-09-29). Differing
+    values are reported as conflicts and never overwritten. Employees that exist only in
+    award-intelligence are reported for onboarding, because skills and a home site don't exist there.
+    `classification_level` isn't synced, since the master has no engine level key.
+  - Settings: `AWARD_INTELLIGENCE_URL`, `AWARD_INTELLIGENCE_API_TOKEN`. UI: the Workforce → Employee
+    Sync page in the React shell (award-intelligence PR #1).
 - **Verified end to end (local, 2026-09-28):** security seed → `sync-matrix` (405/405 cells
   engine-priced, 0 placeholders) → Tier 1 week 1 solved 25/25 → engine exact $8,598.90 vs solver
   estimate $8,365.57, `cost_status=engine_exact`.

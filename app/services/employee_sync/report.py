@@ -84,7 +84,13 @@ def _compare(field: str, orl_value: str | None, master_raw: str, mapped: str | N
         outcome = FieldOutcome.SAME
     else:
         outcome = FieldOutcome.CONFLICT
-    return FieldComparison(field=field, orl_value=orl_value, master_value=master_raw or None, outcome=outcome)
+    return FieldComparison(
+        field=field,
+        orl_value=orl_value,
+        master_value=master_raw or None,
+        outcome=outcome,
+        fill_value=mapped if outcome is FieldOutcome.FILL else None,
+    )
 
 
 def _match(worker: WorkerSnapshot, master: MasterEmployee, jurisdiction: str) -> MatchedEmployee:

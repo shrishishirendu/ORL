@@ -121,6 +121,7 @@ def test_blank_orl_fields_are_fills_with_mapped_values() -> None:
     entry = report.matched[0]
     assert fields_of(report, 1) == {"employment_type": FieldOutcome.FILL, "award_code": FieldOutcome.FILL}
     assert [mapped_value(f) for f in entry.fields] == [EmploymentType.CASUAL, "MA000016"]
+    assert [f.fill_value for f in entry.fields] == ["casual", "MA000016"]
 
 
 def test_equal_values_are_same_after_mapping() -> None:
