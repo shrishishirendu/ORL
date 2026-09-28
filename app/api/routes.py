@@ -30,9 +30,7 @@ from app.schemas.routes import RouteOrSiteAssignment, RouteRead, RouteStopRead, 
 router = APIRouter(tags=["routes"])
 
 
-async def _return_to_home_time(
-    session: AsyncSession, route: Route, home_site_id: int
-):
+async def _return_to_home_time(session: AsyncSession, route: Route, home_site_id: int):
     """Recompute the closed-round-trip's return-to-home arrival.
 
     Mirrors ``app.services.dispatch.solver``'s own arithmetic (last stop's
@@ -85,11 +83,7 @@ async def get_route(
     route = (
         await session.execute(
             select(Route)
-            .options(
-                selectinload(Route.stops)
-                .selectinload(RouteStop.job)
-                .selectinload(Job.site)
-            )
+            .options(selectinload(Route.stops).selectinload(RouteStop.job).selectinload(Job.site))
             .where(Route.roster_assignment_id == roster_assignment_id)
         )
     ).scalar_one_or_none()

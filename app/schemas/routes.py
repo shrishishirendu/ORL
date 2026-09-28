@@ -65,6 +65,4 @@ class SiteAssignmentRead(BaseModel):
     departure: datetime
 
 
-RouteOrSiteAssignment = Annotated[
-    RouteRead | SiteAssignmentRead, Field(discriminator="mode")
-]
+RouteOrSiteAssignment = Annotated[RouteRead | SiteAssignmentRead, Field(discriminator="mode")]

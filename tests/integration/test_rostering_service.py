@@ -106,3 +106,43 @@ async def test_infeasible_solve_persists_failure_reason_and_no_assignments(db_se
         .all()
     )
     assert assignments == []
+
+
+async def test_excluded_workers_are_not_rostered(db_session) -> None:
+    """A worker excluded from the solve (e.g. reported sick) is never a
+    candidate, even when they are the cheapest option."""
+    home = await make_site(db_session, "HOME3", region="North")
+    sick = await make_worker(db_session, home, name="Sick", skills=["driver"])
+    cover = await make_worker(db_session, home, name="Cover", skills=["driver"])
+    shift = await make_shift(
+        db_session,
+        home,
+        date=SHIFT_DATE,
+        start_time=time(8, 0),
+        end_time=time(16, 0),
+        required_skill="driver",
+    )
+    await make_award_row(db_session, sick, shift, pay_cost=100.00)
+    await make_award_row(db_session, cover, shift, pay_cost=150.00)
+    await db_session.commit()
+
+    baseline = await solve_and_persist_roster(db_session, SHIFT_DATE, SHIFT_DATE)
+    excluded = await solve_and_persist_roster(
+        db_session, SHIFT_DATE, SHIFT_DATE, excluded_worker_ids=frozenset({sick.id})
+    )
+
+    assert baseline.total_cost == pytest.approx(100.00)
+    assert excluded.status is RosterStatus.SOLVED
+    assert excluded.total_cost == pytest.approx(150.00)
+    workers = (
+        (
+            await db_session.execute(
+                select(RosterAssignment.worker_id).where(
+                    RosterAssignment.roster_id == excluded.roster_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert workers == [cover.id]

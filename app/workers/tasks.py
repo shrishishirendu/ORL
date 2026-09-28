@@ -112,17 +112,28 @@ def _reopt_outcome_to_dict(outcome: ReoptimizationOutcome) -> dict[str, Any]:
 
 
 async def solve_roster_task(
-    ctx: dict[str, Any], period_start: str, period_end: str
+    ctx: dict[str, Any],
+    period_start: str,
+    period_end: str,
+    excluded_worker_ids: list[int] | None = None,
 ) -> dict[str, Any]:
     """Tier 1: solve and persist a Roster for `period_start..period_end` (ISO
     dates), then reconcile its cost against the award engine (non-fatal --
     see module docstring).
+
+    `excluded_worker_ids` (optional) are not rostered in this solve; the
+    worker-sick escalation below passes the sick worker.
     """
+    excluded = frozenset(excluded_worker_ids or ())
     async with async_session_factory() as session:
         outcome = await solve_and_persist_roster(
-            session, date.fromisoformat(period_start), date.fromisoformat(period_end)
+            session,
+            date.fromisoformat(period_start),
+            date.fromisoformat(period_end),
+            excluded_worker_ids=excluded,
         )
     result = _roster_outcome_to_dict(outcome)
+    result["excluded_worker_ids"] = sorted(excluded)
     result.update(await _reconcile_roster(outcome))
     return result
 
@@ -239,7 +250,12 @@ async def handle_reoptimization_event_task(
 
     if outcome.outcome is OutcomeType.ESCALATED_TO_TIER1:
         period = outcome.shift_date.isoformat()
-        chained_job = await ctx["redis"].enqueue_job("solve_roster_task", period, period)
+        # A sick worker is unavailable for the rest of the shift, so the
+        # re-roster of that date must not assign them again.
+        excluded = (
+            [outcome.worker_id] if outcome.event_type is ReoptimizationEventType.WORKER_SICK else []
+        )
+        chained_job = await ctx["redis"].enqueue_job("solve_roster_task", period, period, excluded)
         result["escalation_roster_job_id"] = chained_job.job_id if chained_job is not None else None
 
     return result

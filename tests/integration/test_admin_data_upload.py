@@ -125,9 +125,7 @@ async def test_upload_workers_matches_by_name_when_no_employee_code(client, db_s
     # upload is a *full replace* of matched fields though, so the row's own
     # casing becomes the persisted name (this is not a "preserve existing
     # name" merge).
-    csv_bytes = _workers_csv(
-        [("name match worker", "nursing,driving", "", "U-SITE-2", "true", "")]
-    )
+    csv_bytes = _workers_csv([("name match worker", "nursing,driving", "", "U-SITE-2", "true", "")])
     response = await client.post(
         "/admin/data/upload", files={"workers_csv": ("workers.csv", csv_bytes, "text/csv")}
     )
@@ -145,7 +143,11 @@ async def test_upload_workers_matches_by_name_when_no_employee_code(client, db_s
 async def test_upload_shifts_replaces_unrostered_shifts_in_period(client, db_session) -> None:
     site = await make_site(db_session, "U-SITE-3")
     old_shift = await make_shift(
-        db_session, site, date=PERIOD_START, start_time=time(8, 0), end_time=time(16, 0),
+        db_session,
+        site,
+        date=PERIOD_START,
+        start_time=time(8, 0),
+        end_time=time(16, 0),
         required_skill="cleaning",
     )
     await db_session.commit()
@@ -173,7 +175,11 @@ async def test_upload_shifts_replaces_unrostered_shifts_in_period(client, db_ses
 async def test_upload_shifts_skips_already_rostered_shift(client, db_session) -> None:
     site = await make_site(db_session, "U-SITE-4")
     rostered_shift = await make_shift(
-        db_session, site, date=PERIOD_START, start_time=time(8, 0), end_time=time(16, 0),
+        db_session,
+        site,
+        date=PERIOD_START,
+        start_time=time(8, 0),
+        end_time=time(16, 0),
         required_skill="cleaning",
     )
     worker = await make_worker(db_session, site, name="Rostered Worker", skills=["cleaning"])
@@ -205,7 +211,11 @@ async def test_upload_shifts_skips_already_rostered_shift(client, db_session) ->
 async def test_upload_shifts_skips_shift_with_real_award_data(client, db_session) -> None:
     site = await make_site(db_session, "U-SITE-5")
     shift_with_real_data = await make_shift(
-        db_session, site, date=PERIOD_START, start_time=time(8, 0), end_time=time(16, 0),
+        db_session,
+        site,
+        date=PERIOD_START,
+        start_time=time(8, 0),
+        end_time=time(16, 0),
         required_skill="cleaning",
     )
     worker = await make_worker(db_session, site, name="Real Data Worker", skills=["cleaning"])

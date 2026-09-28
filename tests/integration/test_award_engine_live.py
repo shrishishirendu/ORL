@@ -69,9 +69,7 @@ async def test_live_sync_solve_and_reconcile(db_session) -> None:
         status, health = await client.health()
         assert status == 200 and health.status == "ok"
 
-        summary = await populate_award_cost_matrix(
-            db_session, DAY1, DAY2, client, context=CONTEXT
-        )
+        summary = await populate_award_cost_matrix(db_session, DAY1, DAY2, client, context=CONTEXT)
         await db_session.commit()
         first = await _costs(db_session)
         assert summary.rows_written == 4

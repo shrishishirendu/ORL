@@ -337,8 +337,15 @@ def _build_shift_defs(num_days: int = _NUM_DEMO_DAYS) -> list[dict]:
     shift_defs: list[dict] = []
     shift_counter = 0
 
-    def add(day_offset: int, site_code: str, window: tuple[time, time], skill: str,
-            region: str, pattern: str, jobs: list | None = None) -> None:
+    def add(
+        day_offset: int,
+        site_code: str,
+        window: tuple[time, time],
+        skill: str,
+        region: str,
+        pattern: str,
+        jobs: list | None = None,
+    ) -> None:
         nonlocal shift_counter
         eligible = _eligible_for_skill(region, skill)
         if not eligible:
@@ -373,7 +380,12 @@ def _build_shift_defs(num_days: int = _NUM_DEMO_DAYS) -> list[dict]:
                     if shift_counter % 2:
                         stop_a, stop_b = stop_b, stop_a
                     add(
-                        day_offset, site_code, _PATROL, "mobile_patrol", region, "patrol",
+                        day_offset,
+                        site_code,
+                        _PATROL,
+                        "mobile_patrol",
+                        region,
+                        "patrol",
                         jobs=[
                             # evening lock-up check
                             (stop_a, time(17, 0), time(18, 30), 30),

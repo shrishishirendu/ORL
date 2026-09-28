@@ -105,12 +105,16 @@ def _shift_hours(shift: Shift) -> float:
 
 async def _load_active_workers(session: AsyncSession) -> list[Worker]:
     rows = (
-        await session.execute(
-            select(Worker)
-            .options(selectinload(Worker.home_site))
-            .where(Worker.active.is_(True))
+        (
+            await session.execute(
+                select(Worker)
+                .options(selectinload(Worker.home_site))
+                .where(Worker.active.is_(True))
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return list(rows)
 
 
@@ -211,11 +215,15 @@ async def regenerate_eligibility(
     touches an existing row.
     """
     shifts = (
-        await session.execute(
-            select(Shift)
-            .options(selectinload(Shift.site))
-            .where(Shift.date >= period_start, Shift.date <= period_end)
+        (
+            await session.execute(
+                select(Shift)
+                .options(selectinload(Shift.site))
+                .where(Shift.date >= period_start, Shift.date <= period_end)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     workers = await _load_active_workers(session)
     return await _generate(session, list(shifts), workers)

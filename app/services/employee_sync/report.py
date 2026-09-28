@@ -73,7 +73,9 @@ def mapped_value(comparison: FieldComparison) -> str | EmploymentType | None:
     return match.group(1) if match else None
 
 
-def _compare(field: str, orl_value: str | None, master_raw: str, mapped: str | None) -> FieldComparison:
+def _compare(
+    field: str, orl_value: str | None, master_raw: str, mapped: str | None
+) -> FieldComparison:
     if not master_raw:
         outcome = FieldOutcome.MASTER_BLANK
     elif mapped is None:
@@ -143,7 +145,9 @@ def build_report(
             seen.add(code)
             matched.append(_match(worker, master_by_id[code], jurisdiction))
         else:
-            orl_only.append(OrlOnlyWorker(worker_id=worker.id, worker_name=worker.name, employee_code=code))
+            orl_only.append(
+                OrlOnlyWorker(worker_id=worker.id, worker_name=worker.name, employee_code=code)
+            )
 
     master_only = [
         MasterOnlyEmployee(

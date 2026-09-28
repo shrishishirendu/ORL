@@ -37,7 +37,9 @@ async def sync_employees_endpoint(
     if client is None:
         raise HTTPException(status_code=503, detail="award-intelligence not configured")
     try:
-        report = await sync_employees(session, client, apply=apply, jurisdiction=settings.award_jurisdiction)
+        report = await sync_employees(
+            session, client, apply=apply, jurisdiction=settings.award_jurisdiction
+        )
     except EmployeeMasterUnavailable as exc:
         await session.rollback()
         raise HTTPException(status_code=503, detail=str(exc)) from exc

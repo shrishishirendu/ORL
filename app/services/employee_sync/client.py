@@ -89,7 +89,9 @@ def parse_export(body: object) -> EmployeeMasterExport:
             MasterEmployee(**{ours: row.get(theirs) or "" for ours, theirs in _FIELDS.items()})
             for row in body.get("employees") or []
         ]
-        return EmployeeMasterExport(source=MasterSource.from_json(body.get("source") or {}), employees=employees)
+        return EmployeeMasterExport(
+            source=MasterSource.from_json(body.get("source") or {}), employees=employees
+        )
     except (ValidationError, AttributeError, TypeError) as exc:
         raise EmployeeMasterError(f"malformed employee master: {exc}") from exc
 
@@ -126,7 +128,9 @@ class EmployeeMasterClient:
                 detail = response.json().get("error") or response.text
             except ValueError:
                 detail = response.text
-            raise EmployeeMasterError(f"award-intelligence returned {response.status_code}: {detail}")
+            raise EmployeeMasterError(
+                f"award-intelligence returned {response.status_code}: {detail}"
+            )
         try:
             body = response.json()
         except ValueError as exc:
