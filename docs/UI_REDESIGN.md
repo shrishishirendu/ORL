@@ -1,6 +1,10 @@
 # ORL UI/UX redesign — status and handoff
 
-Last updated: 2026-09-25. Status: **wireframes approved by the product owner; implementation not started.**
+Last updated: 2026-09-28. Status: **wireframes approved; implementation started in the award-intelligence
+React app (the single product shell, owner decision 2026-09-28).** Plan / Dispatch / Live pages are built
+on branch `feature/orl-unification` of award-intelligence (draft PR
+https://github.com/shreeyanshujha/award-intelligence/pull/1), in `src/orl/`, calling this API through a
+Vite proxy (`/orl` → `:8000`). ORL's static `/admin/` UI is kept until those pages reach parity, then retired.
 
 This is the working record of the UI/UX redesign so any Claude session or teammate can pick it
 up. Read it before touching `app/web/static/` or proposing UI changes.
@@ -117,6 +121,15 @@ detail/escalation reason/escalation job id; route history for before/after; solv
 classification level, timesheets/actuals, leave, pay run and engine-findings APIs (arrives with
 the Award Intelligence integration; the `AwardCostMatrix` shape stays the seam — see
 ARCHITECTURE.md).
+
+## Gaps found while building (2026-09-28)
+
+- **Solver has no rest-break or daily-hours constraint.** Tier 1 week 1 gave the same officer 07:00–15:00 and
+  23:00–07:00 on one day (16 h in a day with an 8 h break). MA000016 caps ordinary hours at 10 per day
+  (cl. 13), and rest breaks between shifts apply. These must become ORL typed constraints, with their
+  values sourced from the engine's rule data rather than re-derived here.
+- **Escalation re-roster creates a new one-day roster.** Pages now pick rosters explicitly, but there is
+  still no current/published roster per period (already listed below).
 
 ## Next steps
 
