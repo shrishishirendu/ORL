@@ -268,8 +268,13 @@ async def test_shift_break_is_stored_returned_and_validated(client, db_session) 
     site = await make_site(db_session, "S-BREAK-1", region=REGION)
     await db_session.commit()
     body = {
-        "date": SHIFT_DATE.isoformat(), "start_time": "22:00", "end_time": "06:00",
-        "required_skill": SKILL, "site_id": site.id, "break_minutes": 30, "break_start": "02:00",
+        "date": SHIFT_DATE.isoformat(),
+        "start_time": "22:00",
+        "end_time": "06:00",
+        "required_skill": SKILL,
+        "site_id": site.id,
+        "break_minutes": 30,
+        "break_start": "02:00",
     }
 
     created = await client.post("/shifts", json=body)

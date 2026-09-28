@@ -325,13 +325,31 @@ async def test_upload_shifts_reads_optional_break_columns(client, db_session) ->
     await make_site(db_session, "U-SITE-BRK")
     await db_session.commit()
     header = [
-        "date", "start_time", "end_time", "required_skill", "site_code", "is_multi_stop",
-        "break_minutes", "break_start",
+        "date",
+        "start_time",
+        "end_time",
+        "required_skill",
+        "site_code",
+        "is_multi_stop",
+        "break_minutes",
+        "break_start",
     ]
-    ok = _csv_bytes(header, [
-        (PERIOD_START.isoformat(), "22:00", "06:00", "guard", "U-SITE-BRK", "false", "30", "02:00"),
-        (PERIOD_START.isoformat(), "08:00", "16:00", "guard", "U-SITE-BRK", "false", "", ""),
-    ])
+    ok = _csv_bytes(
+        header,
+        [
+            (
+                PERIOD_START.isoformat(),
+                "22:00",
+                "06:00",
+                "guard",
+                "U-SITE-BRK",
+                "false",
+                "30",
+                "02:00",
+            ),
+            (PERIOD_START.isoformat(), "08:00", "16:00", "guard", "U-SITE-BRK", "false", "", ""),
+        ],
+    )
     response = await client.post(
         "/admin/data/upload",
         files={"shifts_csv": ("shifts.csv", ok, "text/csv")},
@@ -341,9 +359,21 @@ async def test_upload_shifts_reads_optional_break_columns(client, db_session) ->
     shifts = (await db_session.execute(select(Shift).order_by(Shift.start_time))).scalars().all()
     assert [(s.break_minutes, s.break_start) for s in shifts] == [(None, None), (30, time(2, 0))]
 
-    bad = _csv_bytes(header, [
-        (PERIOD_START.isoformat(), "08:00", "16:00", "guard", "U-SITE-BRK", "false", "30", "15:45"),
-    ])
+    bad = _csv_bytes(
+        header,
+        [
+            (
+                PERIOD_START.isoformat(),
+                "08:00",
+                "16:00",
+                "guard",
+                "U-SITE-BRK",
+                "false",
+                "30",
+                "15:45",
+            ),
+        ],
+    )
     response = await client.post(
         "/admin/data/upload",
         files={"shifts_csv": ("shifts.csv", bad, "text/csv")},
@@ -351,4 +381,3 @@ async def test_upload_shifts_reads_optional_break_columns(client, db_session) ->
     )
     assert response.status_code == 422
     assert "within the shift" in str(response.json()["detail"])
-

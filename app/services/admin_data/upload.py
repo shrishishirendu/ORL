@@ -48,8 +48,14 @@ WORKERS_SHEET = "Workers"
 SHIFTS_SHEET = "Shifts"
 WORKERS_COLUMNS = ["name", "skills", "region", "home_site_code", "active", "employee_code"]
 SHIFTS_COLUMNS = [
-    "date", "start_time", "end_time", "required_skill", "site_code", "is_multi_stop",
-    "break_minutes", "break_start",
+    "date",
+    "start_time",
+    "end_time",
+    "required_skill",
+    "site_code",
+    "is_multi_stop",
+    "break_minutes",
+    "break_start",
 ]
 
 _TRUE_STRINGS = {"true", "1", "yes", "y"}
@@ -210,7 +216,8 @@ def _validate_shift_rows(dicts: list[dict], errors: list[str], label: str) -> li
         raw_minutes, raw_start = d.get("break_minutes"), d.get("break_start")
         try:
             break_minutes = (
-                None if raw_minutes is None or str(raw_minutes).strip() == ""
+                None
+                if raw_minutes is None or str(raw_minutes).strip() == ""
                 else int(float(str(raw_minutes).strip()))
             )
             break_start = (
