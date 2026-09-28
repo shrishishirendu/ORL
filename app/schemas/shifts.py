@@ -33,6 +33,8 @@ class ShiftRead(BaseModel):
     required_skill: str
     site: SiteSummary
     is_multi_stop: bool
+    break_minutes: int | None = None
+    break_start: time | None = None
     eligible_worker_count: int = 0
 
 
@@ -59,6 +61,10 @@ class ShiftCreateRequest(BaseModel):
     required_skill: str = Field(min_length=1)
     site_id: int
     is_multi_stop: bool = False
+    # Rostered unpaid break. Omit when unknown; checked against the shift
+    # span by the service layer (422 when it doesn't fit).
+    break_minutes: int | None = Field(default=None, ge=0)
+    break_start: time | None = None
 
 
 class ShiftUpdateRequest(BaseModel):
@@ -72,6 +78,8 @@ class ShiftUpdateRequest(BaseModel):
     required_skill: str | None = Field(default=None, min_length=1)
     site_id: int | None = None
     is_multi_stop: bool | None = None
+    break_minutes: int | None = Field(default=None, ge=0)
+    break_start: time | None = None
 
 
 class ShiftCreateResponse(BaseModel):

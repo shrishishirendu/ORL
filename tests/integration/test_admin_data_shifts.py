@@ -262,3 +262,36 @@ async def test_regenerate_eligibility_backfills_for_a_new_worker(client, db_sess
         params={"period_start": SHIFT_DATE.isoformat(), "period_end": SHIFT_DATE.isoformat()},
     )
     assert regen_again.json()["placeholder_award_rows_created"] == 0
+
+
+async def test_shift_break_is_stored_returned_and_validated(client, db_session) -> None:
+    site = await make_site(db_session, "S-BREAK-1", region=REGION)
+    await db_session.commit()
+    body = {
+        "date": SHIFT_DATE.isoformat(),
+        "start_time": "22:00",
+        "end_time": "06:00",
+        "required_skill": SKILL,
+        "site_id": site.id,
+        "break_minutes": 30,
+        "break_start": "02:00",
+    }
+
+    created = await client.post("/shifts", json=body)
+    assert created.status_code == 201
+    shift = created.json()["shift"]
+    assert (shift["break_minutes"], shift["break_start"]) == (30, "02:00:00")
+
+    listed = (await client.get("/shifts")).json()["items"]
+    assert [(s["break_minutes"], s["break_start"]) for s in listed] == [(30, "02:00:00")]
+
+    # Shortening the shift so the positioned break falls outside it is refused.
+    moved = await client.patch(f"/shifts/{shift['id']}", json={"end_time": "01:00"})
+    assert moved.status_code == 422
+    assert "within the shift" in moved.json()["detail"]
+
+    too_long = await client.post(
+        "/shifts", json={**body, "break_minutes": 480, "break_start": None}
+    )
+    assert too_long.status_code == 422
+    assert "shorter than the shift" in too_long.json()["detail"]

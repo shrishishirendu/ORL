@@ -26,6 +26,7 @@ from app.models.shift import Shift
 from app.models.site import Site
 from app.services.admin_data.eligibility import generate_for_shift
 from app.services.admin_data.errors import (
+    InvalidBreakError,
     MultiStopNotSupportedError,
     ShiftNotFoundError,
     SiteNotFoundError,
@@ -44,6 +45,39 @@ class ShiftCreateData:
     required_skill: str
     site_id: int
     is_multi_stop: bool = False
+    break_minutes: int | None = None
+    break_start: time_ | None = None
+
+
+def _minutes(value: time_) -> int:
+    return value.hour * 60 + value.minute
+
+
+def break_problem(
+    start_time: time_, end_time: time_, break_minutes: int | None, break_start: time_ | None
+) -> str | None:
+    """Why a rostered break doesn't fit its shift, or ``None`` if it does.
+
+    An end at or before the start is an overnight shift (the same rule as
+    Tier 1 and the engine). A break must be shorter than the shift, and a
+    positioned break must lie wholly inside it.
+    """
+    if break_minutes is None:
+        if break_start is not None:
+            return "break_start is set but break_minutes is missing"
+        return None
+    if break_minutes < 0:
+        return "break_minutes must be zero or more"
+    span = (_minutes(end_time) - _minutes(start_time)) % (24 * 60) or 24 * 60
+    if break_minutes >= span:
+        return f"break_minutes ({break_minutes}) must be shorter than the shift ({span} minutes)"
+    if break_start is not None:
+        if break_minutes == 0:
+            return "break_start is set but break_minutes is 0"
+        offset = (_minutes(break_start) - _minutes(start_time)) % (24 * 60)
+        if offset + break_minutes > span:
+            return "the break must start and finish within the shift"
+    return None
 
 
 async def create_shift(session: AsyncSession, data: ShiftCreateData) -> tuple[Shift, int]:
@@ -58,6 +92,9 @@ async def create_shift(session: AsyncSession, data: ShiftCreateData) -> tuple[Sh
     """
     if data.is_multi_stop:
         raise MultiStopNotSupportedError()
+    problem = break_problem(data.start_time, data.end_time, data.break_minutes, data.break_start)
+    if problem:
+        raise InvalidBreakError(problem)
     site = (await session.execute(select(Site).where(Site.id == data.site_id))).scalar_one_or_none()
     if site is None:
         raise SiteNotFoundError(site_id=data.site_id)
@@ -69,6 +106,8 @@ async def create_shift(session: AsyncSession, data: ShiftCreateData) -> tuple[Sh
         required_skill=data.required_skill,
         site_id=data.site_id,
         is_multi_stop=False,
+        break_minutes=data.break_minutes,
+        break_start=data.break_start,
     )
     session.add(shift)
     await session.flush()
@@ -102,6 +141,14 @@ async def update_shift(session: AsyncSession, shift_id: int, updates: dict) -> t
         if site is None:
             raise SiteNotFoundError(site_id=updates["site_id"])
 
+    merged = {
+        name: updates.get(name, getattr(shift, name))
+        for name in ("start_time", "end_time", "break_minutes", "break_start")
+    }
+    problem = break_problem(**merged)
+    if problem:
+        raise InvalidBreakError(problem)
+
     for field_name, value in updates.items():
         setattr(shift, field_name, value)
 
@@ -124,6 +171,8 @@ class ShiftUploadRow:
     end_time: time_
     required_skill: str
     site_code: str
+    break_minutes: int | None = None
+    break_start: time_ | None = None
 
 
 @dataclass
@@ -276,6 +325,8 @@ async def replace_shifts_for_period(
             required_skill=row.required_skill,
             site_id=site.id,
             is_multi_stop=False,
+            break_minutes=row.break_minutes,
+            break_start=row.break_start,
         )
         session.add(shift)
         new_shifts.append(shift)

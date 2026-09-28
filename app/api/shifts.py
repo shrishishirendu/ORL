@@ -24,6 +24,7 @@ from app.schemas.shifts import (
     ShiftUpdateResponse,
 )
 from app.services.admin_data.errors import (
+    InvalidBreakError,
     MultiStopNotSupportedError,
     ShiftNotFoundError,
     SiteNotFoundError,
@@ -42,6 +43,8 @@ def _shift_read_from_row(shift: Shift, eligible_worker_count: int) -> ShiftRead:
         required_skill=shift.required_skill,
         site=SiteSummary.model_validate(shift.site),
         is_multi_stop=shift.is_multi_stop,
+        break_minutes=shift.break_minutes,
+        break_start=shift.break_start,
         eligible_worker_count=eligible_worker_count,
     )
 
@@ -129,7 +132,7 @@ async def create_shift_endpoint(
     """
     try:
         shift, created = await create_shift(session, ShiftCreateData(**payload.model_dump()))
-    except MultiStopNotSupportedError as exc:
+    except (MultiStopNotSupportedError, InvalidBreakError) as exc:
         await session.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except SiteNotFoundError as exc:
@@ -152,7 +155,7 @@ async def update_shift_endpoint(
     updates = payload.model_dump(exclude_unset=True)
     try:
         shift, created = await update_shift(session, shift_id, updates)
-    except MultiStopNotSupportedError as exc:
+    except (MultiStopNotSupportedError, InvalidBreakError) as exc:
         await session.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ShiftNotFoundError as exc:

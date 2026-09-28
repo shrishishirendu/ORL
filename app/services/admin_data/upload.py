@@ -35,6 +35,7 @@ from app.services.admin_data.errors import UploadValidationError
 from app.services.admin_data.shifts import (
     ShiftsReplaceSummary,
     ShiftUploadRow,
+    break_problem,
     replace_shifts_for_period,
 )
 from app.services.admin_data.workers import (
@@ -46,7 +47,16 @@ from app.services.admin_data.workers import (
 WORKERS_SHEET = "Workers"
 SHIFTS_SHEET = "Shifts"
 WORKERS_COLUMNS = ["name", "skills", "region", "home_site_code", "active", "employee_code"]
-SHIFTS_COLUMNS = ["date", "start_time", "end_time", "required_skill", "site_code", "is_multi_stop"]
+SHIFTS_COLUMNS = [
+    "date",
+    "start_time",
+    "end_time",
+    "required_skill",
+    "site_code",
+    "is_multi_stop",
+    "break_minutes",
+    "break_start",
+]
 
 _TRUE_STRINGS = {"true", "1", "yes", "y"}
 _FALSE_STRINGS = {"false", "0", "no", "n"}
@@ -203,6 +213,28 @@ def _validate_shift_rows(dicts: list[dict], errors: list[str], label: str) -> li
                 "use the existing seed/DB path for multi-stop shifts"
             )
             continue
+        raw_minutes, raw_start = d.get("break_minutes"), d.get("break_start")
+        try:
+            break_minutes = (
+                None
+                if raw_minutes is None or str(raw_minutes).strip() == ""
+                else int(float(str(raw_minutes).strip()))
+            )
+            break_start = (
+                None
+                if raw_start is None or str(raw_start).strip() == ""
+                else _parse_hhmm(raw_start)
+            )
+        except ValueError:
+            errors.append(
+                f"{label} row {i} ({date_val}): 'break_minutes' must be a whole number and "
+                "'break_start' HH:MM, if given"
+            )
+            continue
+        problem = break_problem(start_val, end_val, break_minutes, break_start)
+        if problem:
+            errors.append(f"{label} row {i} ({date_val}): {problem}")
+            continue
         rows.append(
             ShiftUploadRow(
                 date=date_val,
@@ -210,6 +242,8 @@ def _validate_shift_rows(dicts: list[dict], errors: list[str], label: str) -> li
                 end_time=end_val,
                 required_skill=required_skill,
                 site_code=site_code,
+                break_minutes=break_minutes,
+                break_start=break_start,
             )
         )
     return rows
